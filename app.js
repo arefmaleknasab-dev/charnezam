@@ -33,12 +33,9 @@
   const MIN_JAW_ENGAGEMENT = 0.5;
   const JAW_BADGE_OFFSET = 0.06;
   const JAW_BADGE_RADIUS = 0.036;
-  const SIDE_JAW_FILL = 'hsl(210 16% 74%)';
   const SIDE_BODY_SHADOW = 58;
   const SIDE_BODY_HIGHLIGHT = 90;
 
-  const FA_DIGITS = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
-  const fa = (n) => String(n).replace(/\d/g, (c) => FA_DIGITS[+c]);
   const fmt = (v) => String(Math.round(v * 100) / 100);
   const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
   const pts = (a) => a.map((p) => p.map((n) => +n.toFixed(2)).join(',')).join(' ');
@@ -83,7 +80,7 @@
     const jawScale = D / JAW_REFERENCE.D;
     const w = jawWidth(D);
     return {
-      D, H1, D3: MODEL.D3, jawScale,
+      D, H1, jawScale,
       w, tipChamfer: tipChamfer(w),
       slotDepth: 0.4 * MODEL.H1 * jawScale,
       hMax: JAW_STEP_LIMITS.h.max * jawScale,
@@ -107,7 +104,7 @@
   }
 
   // All four jaws share one profile in reference units so resizing never rounds away edits.
-  const state = { body: defaultBody(), jawAtRef: defaultReferenceJaw(), gripStep: null, dims: true };
+  const state = { body: defaultBody(), jawAtRef: defaultReferenceJaw(), gripStep: null };
   let diagramDrag = null;
 
   const jawLen = (j) => j.steps.reduce((s, x) => s + x.l, 0);
@@ -115,6 +112,7 @@
   // Keep half of each jaw's radial length within the body at maximum opening.
   const pMax = (j, g) => Math.max(pMin(j, g), g.D / 2 - MIN_JAW_ENGAGEMENT * jawLen(j));
   const segments = (j) => (j.rev ? [...j.steps].reverse() : j.steps);
+  const stepsFromOutside = (j) => (j.rev ? j.steps : [...j.steps].reverse());
 
   function maxJawReach(g) {
     const maxJawLength = JAW_REFERENCE.steps.length * JAW_STEP_LIMITS.l.max * g.jawScale;
@@ -208,10 +206,7 @@
     // Fit the largest supported dimensions once so resizing changes the visible size, not the zoom.
     const g = geometry({ D: BODY_LIMITS.D.max, H1: BODY_LIMITS.H1.max });
     const maxReach = maxJawReach(g);
-    const frame = (svg, x, y, width, height) => {
-      svg.setAttribute('viewBox', `${x} ${y} ${width} ${height}`);
-      svg.style.aspectRatio = `${width} / ${height}`;
-    };
+    const frame = (svg, x, y, width, height) => svg.setAttribute('viewBox', `${x} ${y} ${width} ${height}`);
     // Leave room for the badges even with the longest jaws opened to the limit.
     const badgeReach = maxReach + (JAW_BADGE_OFFSET + JAW_BADGE_RADIUS) * g.D;
     const frontX = badgeReach + 0.02 * g.D;
@@ -237,10 +232,10 @@
     s += `<circle class="ln body" r="${R}"/><circle class="thin nofill" r="${R - 0.02 * D}"/>`;
     s += `<g clip-path="url(#bodyClip)">` + [0, 90].map((a) =>
       `<rect class="thin slot" x="${-g.w / 2}" y="${-R * 1.05}" width="${g.w}" height="${R * 2.1}" transform="rotate(${a})"/>`).join('') + `</g>`;
-    s += `<circle class="ln void" r="${g.D3 / 2}"/>`;
+    s += `<circle class="ln void" r="${MODEL.D3 / 2}"/>`;
     s += frontPinions([-1, 1].map((sg) =>
-      `<line class="hid np" x1="${sg * sock}" y1="${-R - prot}" x2="${sg * sock}" y2="${-R + 0.03 * D}"/>`).join(''));
-    s += `<line class="ctr" x1="${-0.56 * D}" y1="0" x2="${0.56 * D}" y2="0"/><line class="ctr" x1="0" y1="${-0.56 * D}" x2="0" y2="${0.56 * D}"/>`;
+      `<line class="hid" x1="${sg * sock}" y1="${-R - prot}" x2="${sg * sock}" y2="${-R + 0.03 * D}"/>`).join(''));
+    s += `<line class="ctr" x1="${-0.56 * D}" x2="${0.56 * D}"/><line class="ctr" y1="${-0.56 * D}" y2="${0.56 * D}"/>`;
 
     // The rim is editable only where it is visible behind the jaws.
     s += dimensionEdge('front-body-D', 'D', 'radius', 2, 'circle', `r="${R}"`);
@@ -252,14 +247,14 @@
       const edits = edges.map(({ index, y, half }) =>
         stepEdge(`front-${k}`, index, 'l', axis, direction, [-half, y], [half, y])).join('');
       s += `<g class="jaw" transform="${rotation}" data-axis="${axis}" data-factor="${direction}">${outline}</g>`;
-      s += `<g class="step-edges" transform="${rotation}">${edits}</g>`;
+      s += `<g transform="${rotation}">${edits}</g>`;
     }
 
     s += `<circle class="grip" r="${grip}"/>`;
-    if (state.dims) {
+    if ($('#dims').checked) {
       const q = grip * Math.SQRT1_2 + 0.02 * D;
       // Keep the opening label clear of the upper-left pinion at maximum travel.
-      s += `<text class="dt accent" stroke-width="${0.014 * D}" x="${q}" y="${-q}" text-anchor="start" font-size="${fs}">Ø${fmt(2 * grip)}</text>`;
+      s += `<text class="grip-label" stroke-width="${0.014 * D}" x="${q}" y="${-q}" font-size="${fs}">Ø${fmt(2 * grip)}</text>`;
     }
 
     const r = Math.max(j.p + jawLen(j), R) + JAW_BADGE_OFFSET * D;
@@ -275,7 +270,7 @@
     return `<rect class="jaw-bevel" x="${xStart}" y="${Math.min(innerY, outerY)}" width="${xEnd - xStart}" height="${Math.abs(outerY - innerY)}"/>`;
   }
 
-  function outsideJawSurface(tag, shape, bevels, clipId, fill = bevels ? 'url(#outsideJawShade)' : SIDE_JAW_FILL) {
+  function outsideJawSurface(tag, shape, bevels, clipId, fill) {
     if (!bevels) return `<${tag} class="ln" fill="${fill}" ${shape}/>`;
     // Keep the bands inside the notches and paint the silhouette stroke last.
     return `<${tag} fill="${fill}" ${shape}/>` +
@@ -316,13 +311,13 @@
     const bevel = tipChamferBand(x0, h, rc, bevelEdge) +
       `<line class="thin" x1="${x0}" y1="${rc}" x2="${h}" y2="${rc}"/>`;
     const clipId = sign < 0 ? 'outsideTopClip' : 'outsideBottomClip';
-    const jaw = `<g class="jaw" data-axis="y" data-factor="${sign}">${outsideJawSurface('polygon', shape, bevel, clipId)}</g>${edits}`;
+    const jaw = `<g class="jaw" data-axis="y" data-factor="${sign}">${outsideJawSurface('polygon', shape, bevel, clipId, 'url(#outsideJawShade)')}</g>${edits}`;
 
     // Draw hidden guide grooves over the body only where the jaws protrude.
     let over = '';
     if (u > R) {
       [x0 + 0.34 * sd, x0 + 0.8 * sd].forEach((x) => {
-        over += `<line class="hid np" x1="${x}" y1="${sign * R}" x2="${x}" y2="${sign * u}"/>`;
+        over += `<line class="hid" x1="${x}" y1="${sign * R}" x2="${x}" y2="${sign * u}"/>`;
       });
     }
     return { jaw, over };
@@ -336,7 +331,7 @@
     const xn1 = x0 + 0.8 * sd;
     const hw = g.w / 2;
     const nd = 0.17 * g.w;
-    const nearToFar = [...segments(j)].reverse(); // Outermost step faces the viewer.
+    const nearToFar = stepsFromOutside(j); // Outermost step faces the viewer.
     const xT = Math.max(...nearToFar.map((step) => step.h));
     const P = [
       [xb, -hw], [xn0, -hw], [xn0, -hw + nd], [xn1, -hw + nd], [xn1, -hw], [xT, -hw],
@@ -368,7 +363,7 @@
       visibleExtent = h;
       lines += `<line class="ln" x1="${h}" y1="${-hw}" x2="${h}" y2="${hw}"/>`;
     }
-    const gradient = `<defs><linearGradient id="outsideCenterStepShade" gradientUnits="userSpaceOnUse" x1="${xb}" y1="0" x2="${xT}" y2="0">${stops}</linearGradient></defs>`;
+    const gradient = `<defs><linearGradient id="outsideCenterStepShade" gradientUnits="userSpaceOnUse" x1="${xb}" x2="${xT}">${stops}</linearGradient></defs>`;
     const surface = outsideJawSurface('path', shape, bevels, 'outsideCenterClip', 'url(#outsideCenterStepShade)');
     // The end-on jaw has no visible radial travel here; an upward drag opens it.
     return `<rect class="slotin" x="${xb}" y="${-hw}" width="${-xb}" height="${g.w}"/>${gradient}` +
@@ -385,7 +380,7 @@
       return `<stop offset="${offset}" stop-color="${steelShade(bodyDepthLightness(depth))}"/>`;
     });
     // Share one coordinate system so the body and jaw recesses match at every height.
-    return `<linearGradient id="outsideBodyShade" gradientUnits="userSpaceOnUse" x1="0" y1="${-R}" x2="0" y2="${R}">${stops.join('')}</linearGradient>`;
+    return `<linearGradient id="outsideBodyShade" gradientUnits="userSpaceOnUse" y1="${-R}" x2="0" y2="${R}">${stops.join('')}</linearGradient>`;
   }
 
   function renderOutside(j, g) {
@@ -396,7 +391,7 @@
 
     const top = outsideJawSide(j, -1, g);
     const bottom = outsideJawSide(j, 1, g);
-    let s = `<defs>${outsideBodyGradient(R)}<linearGradient id="outsideJawShade" x1="0%" y1="0%" x2="100%" y2="100%">` +
+    let s = `<defs>${outsideBodyGradient(R)}<linearGradient id="outsideJawShade" y2="100%">` +
       `<stop offset="0" stop-color="#c5cfd8"/><stop offset="1" stop-color="#a2b0be"/></linearGradient></defs>`;
     s += top.jaw + bottom.jaw;
     s += `<rect class="ln body" x="${rearX}" y="${-R}" width="${H1}" height="${D}"/>`;
@@ -417,7 +412,7 @@
     s += `<g transform="translate(${cx} ${cy}) scale(1 ${Math.cos(PIN_THETA).toFixed(4)})">` +
       `<circle class="ln pin" r="${pr}"/>` +
       `<g transform="rotate(${pinAngle(j, g).toFixed(2)})">` +
-      `<line class="ln" x1="${-pr}" y1="0" x2="${pr}" y2="0"/><line class="ln" x1="0" y1="${-pr}" x2="0" y2="${pr}"/>` +
+      `<line class="ln" x1="${-pr}" x2="${pr}"/><line class="ln" y1="${-pr}" y2="${pr}"/>` +
       `<polygon class="ln nofill" points="${pts([[-a, 0], [0, -b], [a, 0], [0, b]])}"/></g></g>`;
     svg.innerHTML = s;
   }
@@ -474,7 +469,6 @@
     const hAct = g.H1 + Math.max(...j.steps.map((x) => x.h));
     $('#spec-H').textContent = fmt(hAct);
     $('#rdH').textContent = `${fmt(hAct)} mm`;
-    $('#dims').checked = state.dims;
   }
 
   function render(g = geometry(state.body)) {
@@ -539,12 +533,12 @@
   function stepAtPoint(target, event, jaw) {
     const p = diagramPoint(target, event);
     if (!p) return null;
-    const ordered = segments(jaw);
     if (target.hasAttribute('data-end-on')) {
       if (p.x < 0) return null; // A click on the shank does not select a step.
-      const visible = [...ordered].reverse().find((step) => p.x <= step.h);
+      const visible = stepsFromOutside(jaw).find((step) => p.x <= step.h);
       return visible ? jaw.steps.indexOf(visible) : null;
     }
+    const ordered = segments(jaw);
     let edge = jaw.p;
     const radial = Math.abs(p.y);
     for (const step of ordered) {
@@ -705,18 +699,18 @@
     renderSpecs();
     initDrawingFrames();
 
-    const stepNotes = ['نوک فک', 'میانی', 'انتهایی'];
-    $('#steps').innerHTML = [0, 1, 2].map((i) => `
-      <div class="step" role="group" aria-label="پله ${fa(i + 1)}">
-        <h3>پله ${fa(i + 1)} <span>${stepNotes[i]}</span></h3>
+    const stepLabels = [['پله ۱', 'نوک فک'], ['پله ۲', 'میانی'], ['پله ۳', 'انتهایی']];
+    $('#steps').innerHTML = stepLabels.map(([title, note], i) => `
+      <div class="step" role="group" aria-label="${title}">
+        <h3>${title} <span>${note}</span></h3>
         <div class="row">
           <label for="l${i}">طول شعاعی</label>
-          <input type="range" id="l${i}" data-i="${i}" data-k="l" step="${JAW_STEP_INCREMENT}">
+          <input type="range" id="l${i}" data-i="${i}" data-k="l">
           <output id="lo${i}" for="l${i}" dir="ltr"></output>
         </div>
         <div class="row">
           <label for="h${i}">ارتفاع</label>
-          <input type="range" id="h${i}" data-i="${i}" data-k="h" step="${JAW_STEP_INCREMENT}">
+          <input type="range" id="h${i}" data-i="${i}" data-k="h">
           <output id="ho${i}" for="h${i}" dir="ltr"></output>
         </div>
       </div>`).join('');
@@ -767,10 +761,7 @@
       setGripStep(ev.target.value === '' ? null : Number(ev.target.value));
     });
 
-    $('#dims').addEventListener('change', (ev) => {
-      state.dims = ev.target.checked;
-      render();
-    });
+    $('#dims').addEventListener('change', () => render());
 
     $('#reset').addEventListener('click', () => {
       endDiagramDrag();
