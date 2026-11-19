@@ -234,10 +234,8 @@
     const c = chamfer(j, g);
     const rc = sign * (j.rev ? u - c : j.p + c);
     const bevelEdge = sign * (j.rev ? u : j.p);
-    let bevel = tipChamferBand(x0, h, rc, bevelEdge);
-    if (j.rev) {
-      bevel += `<line class="thin" x1="${x0}" y1="${rc}" x2="${h}" y2="${rc}"/>`;
-    }
+    const bevel = tipChamferBand(x0, h, rc, bevelEdge) +
+      `<line class="thin" x1="${x0}" y1="${rc}" x2="${h}" y2="${rc}"/>`;
     const clipId = sign < 0 ? 'outsideTopClip' : 'outsideBottomClip';
     const jaw = `<g class="jaw">${outsideJawSurface('polygon', shape, bevel, clipId)}</g>`;
 
