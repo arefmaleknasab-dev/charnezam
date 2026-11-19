@@ -268,7 +268,6 @@
     const bevels = j.rev ? [-1, 1].map((sign) => tipChamferBand(xb, j.steps[0].h, sign * (hw - c), sign * hw)).join('') : '';
     let s = `<rect class="slotin" x="${xb}" y="${-hw}" width="${-xb}" height="${g.w}"/>`;
     s += `<g class="jaw">${outsideJawSurface('path', shape, bevels, 'outsideCenterClip')}`;
-    s += `<line class="ln" x1="${x0}" y1="${-hw}" x2="${x0}" y2="${hw}"/>`;
     s += `<line class="thin" stroke-opacity=".7" x1="${x0 + 0.17 * sd}" y1="${-hw}" x2="${x0 + 0.17 * sd}" y2="${hw}"/>`;
     // A step edge behind another step is visible only beyond the nearer step's extent.
     let visibleExtent = 0;
