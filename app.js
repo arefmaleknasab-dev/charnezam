@@ -203,7 +203,8 @@
 
   // Shade the bevel along the full axial length, including the visible shank.
   function tipChamferBand(xStart, xEnd, innerY, outerY) {
-    return `<rect class="jaw-bevel" x="${xStart}" y="${Math.min(innerY, outerY)}" width="${xEnd - xStart}" height="${Math.abs(outerY - innerY)}"/>`;
+    return `<rect class="jaw-bevel" x="${xStart}" y="${Math.min(innerY, outerY)}" width="${xEnd - xStart}" height="${Math.abs(outerY - innerY)}"/>` +
+      `<line class="thin" x1="${xStart}" y1="${innerY}" x2="${xEnd}" y2="${innerY}"/>`;
   }
 
   function outsideJawSurface(tag, shape, bevels, clipId) {
@@ -233,8 +234,7 @@
     const h = j.steps[0].h;
     const c = chamfer(j, g);
     const rc = sign * (j.rev ? u - c : j.p + c);
-    const bevel = j.rev ? tipChamferBand(x0, h, rc, sign * u) +
-      `<line class="thin" x1="${x0}" y1="${rc}" x2="${h}" y2="${rc}"/>` : '';
+    const bevel = j.rev ? tipChamferBand(x0, h, rc, sign * u) : '';
     const clipId = sign < 0 ? 'outsideTopClip' : 'outsideBottomClip';
     const jaw = `<g class="jaw">${outsideJawSurface('polygon', shape, bevel, clipId)}</g>`;
 
