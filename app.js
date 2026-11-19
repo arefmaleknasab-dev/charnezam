@@ -201,6 +201,18 @@
     svg.innerHTML = s;
   }
 
+  // Project the bevel as a shaded band between the break line and the tip edge.
+  function tipChamferBand(h, innerY, outerY) {
+    return `<rect class="jaw-bevel" x="0" y="${Math.min(innerY, outerY)}" width="${h}" height="${Math.abs(outerY - innerY)}"/>` +
+      `<line class="thin" x1="0" y1="${innerY}" x2="${h}" y2="${innerY}"/>`;
+  }
+
+  function outsideJawSurface(tag, shape, bevels) {
+    if (!bevels) return `<${tag} class="ln" fill="${SIDE_JAW_FILL}" ${shape}/>`;
+    // Stroke the silhouette after filling the bevels so its outline stays crisp.
+    return `<${tag} fill="${SIDE_JAW_FILL}" ${shape}/>${bevels}<${tag} class="ln nofill" ${shape}/>`;
+  }
+
   // Exterior side view from jaw 2: x = 0 is the fixed front face; the rear is at -H1.
   function outsideJawSide(j, sign, g) {
     const sd = g.slotDepth;
@@ -216,13 +228,16 @@
       if (ss[i + 1]) P.push([ss[i + 1].h, u]);
     });
     P.push([xt, u], [xt, u - dt], [x0, u - dt]);
-    const jaw = `<g class="jaw"><polygon class="ln" fill="${SIDE_JAW_FILL}" points="${pts(P.map(([x, r]) => [x, sign * r]))}"/></g>`;
-
-    // Overlay drawn after the body: chamfer edge and the hidden guide-groove edges.
-    const R = g.D / 2;
+    const shape = `points="${pts(P.map(([x, r]) => [x, sign * r]))}"`;
+    const h = j.steps[0].h;
     const c = chamfer(j, g);
     const rc = sign * (j.rev ? u - c : j.p + c);
-    let over = `<line class="cham" x1="0" y1="${rc}" x2="${j.steps[0].h}" y2="${rc}"/>`;
+    const bevel = j.rev ? tipChamferBand(h, rc, sign * u) : '';
+    const jaw = `<g class="jaw">${outsideJawSurface('polygon', shape, bevel)}</g>`;
+
+    // Hidden edges are drawn after the body: the normal tip and the guide grooves.
+    const R = g.D / 2;
+    let over = j.rev ? '' : `<line class="cham" x1="0" y1="${rc}" x2="${h}" y2="${rc}"/>`;
     if (u > R) {
       [x0 + 0.34 * sd, x0 + 0.8 * sd].forEach((x) => {
         over += `<line class="hid np" x1="${x}" y1="${sign * R}" x2="${x}" y2="${sign * u}"/>`;
@@ -245,8 +260,11 @@
       [xb, -hw], [xn0, -hw], [xn0, -hw + nd], [xn1, -hw + nd], [xn1, -hw], [xT, -hw],
       [xT, hw], [xn1, hw], [xn1, hw - nd], [xn0, hw - nd], [xn0, hw], [xb, hw],
     ];
+    const shape = `d="${roundedPath(P, [1, 2, 3, 4, 7, 8, 9, 10], 0.25 * nd)}"`;
+    const c = chamfer(j, g);
+    const bevels = j.rev ? [-1, 1].map((sign) => tipChamferBand(j.steps[0].h, sign * (hw - c), sign * hw)).join('') : '';
     let s = `<rect class="slotin" x="${xb}" y="${-hw}" width="${-xb}" height="${g.w}"/>`;
-    s += `<g class="jaw"><path class="ln" fill="${SIDE_JAW_FILL}" d="${roundedPath(P, [1, 2, 3, 4, 7, 8, 9, 10], 0.25 * nd)}"/>`;
+    s += `<g class="jaw">${outsideJawSurface('path', shape, bevels)}`;
     s += `<line class="ln" x1="${x0}" y1="${-hw}" x2="${x0}" y2="${hw}"/>`;
     s += `<line class="thin" stroke-opacity=".7" x1="${x0 + 0.17 * sd}" y1="${-hw}" x2="${x0 + 0.17 * sd}" y2="${hw}"/>`;
     // A step edge behind another step is visible only beyond the nearer step's extent.
