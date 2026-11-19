@@ -119,6 +119,11 @@
   const pMax = (j, g) => Math.max(pMin(j, g), g.D / 2 - MIN_JAW_ENGAGEMENT * jawLen(j));
   const segments = (j) => (j.rev ? [...j.steps].reverse() : j.steps);
 
+  function maxJawReach(g) {
+    const maxJawLength = JAW_REFERENCE.steps.length * JAW_STEP_LIMITS.l.max * g.jawScale;
+    return g.D / 2 + (1 - MIN_JAW_ENGAGEMENT) * maxJawLength;
+  }
+
   function gripRadius(j) {
     let r = j.p;
     if (state.gripStep === null) return r;
@@ -132,9 +137,14 @@
     return r;
   }
 
-  function shade(h, g, invertLightness = false) {
-    const t = clamp(h / g.hMax, 0, 1);
-    return `hsl(210 16% ${54 + 36 * (invertLightness ? 1 - t : t)}%)`;
+  const steelShade = (lightness) => `hsl(210 16% ${lightness}%)`;
+  const shade = (h, g) => steelShade(54 + 36 * clamp(h / g.hMax, 0, 1));
+
+  function endOnStepShade(h, radius, g) {
+    const height = clamp(h / g.hMax, 0, 1);
+    const reach = clamp(radius / maxJawReach(g), 0, 1);
+    // Tall steps are darker, but moving a face outward brings it closer to the viewer.
+    return steelShade(74 - 22 * height + 24 * reach);
   }
 
   function badge(x, y, k, g) {
@@ -192,8 +202,7 @@
   function initDrawingFrames() {
     // Fit the largest supported dimensions once so resizing changes the visible size, not the zoom.
     const g = geometry({ D: BODY_LIMITS.D.max, H1: BODY_LIMITS.H1.max });
-    const maxJawLength = JAW_REFERENCE.steps.length * JAW_STEP_LIMITS.l.max * g.jawScale;
-    const maxReach = g.D / 2 + (1 - MIN_JAW_ENGAGEMENT) * maxJawLength;
+    const maxReach = maxJawReach(g);
     const frame = (svg, x, y, width, height) => {
       svg.setAttribute('viewBox', `${x} ${y} ${width} ${height}`);
       svg.style.aspectRatio = `${width} / ${height}`;
@@ -333,17 +342,20 @@
     const bevels = j.rev ? [-1, 1].map((sign) => tipChamferBand(xb, j.steps[0].h, sign * (hw - c), sign * hw)).join('') : '';
     let lines = `<line class="thin" stroke-opacity=".7" x1="${x0 + 0.17 * sd}" y1="${-hw}" x2="${x0 + 0.17 * sd}" y2="${hw}"/>`;
     let visibleExtent = xb;
+    let faceRadius = j.p + jawLen(j);
     let stops = '';
     let edits = '';
     const offset = (x) => (x - xb) / (xT - xb);
     // A farther face is visible only beyond the nearer face's extent.
     for (const step of nearToFar) {
-      const { h } = step;
+      const { h, l } = step;
+      const radius = faceRadius;
+      faceRadius -= l; // Hidden steps still contribute to the radial profile.
       if (h <= visibleExtent) continue;
       const index = j.steps.indexOf(step);
       if (!j.rev) {
-        // The end-on view darkens with height. Hard stops follow the existing edges.
-        const color = shade(h, g, true);
+        // Hard stops follow the existing edges.
+        const color = endOnStepShade(h, radius, g);
         stops += `<stop offset="${offset(visibleExtent)}" stop-color="${color}"/><stop offset="${offset(h)}" stop-color="${color}"/>`;
       }
       edits += stepEdge('outside-center', index, 'h', 'x', 1, [h, -hw], [h, hw]);
