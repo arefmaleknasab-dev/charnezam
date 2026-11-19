@@ -1,13 +1,12 @@
 (() => {
   'use strict';
 
-  const MODEL = { D: 125, D1: 95, D2: 108, D3: 30, H: 85, H1: 58, h: 4, z: 3, d: 8 };
+  const MODEL = { D: 125, D3: 30, H1: 58 };
   const BODY_LIMITS = {
     D: { min: 80, max: 160 },
     H1: { min: 30, max: 90 },
   };
   const BODY_INCREMENT = 0.5;
-  const MIN_MOUNTING_RIM = 2;
 
   // Match the unedited jaw profile shown at a 160 mm body diameter.
   const JAW_REFERENCE = {
@@ -83,12 +82,8 @@
   function geometry({ D, H1 }) {
     const jawScale = D / JAW_REFERENCE.D;
     const w = jawWidth(D);
-    // Move the mounting seat and bolt circle inward together only when the rim needs clearance.
-    const mountingReduction = Math.max(0, MODEL.D2 + MODEL.d + 2 * MIN_MOUNTING_RIM - D);
     return {
-      ...MODEL, D, H1, jawScale,
-      D1: MODEL.D1 - mountingReduction,
-      D2: MODEL.D2 - mountingReduction,
+      D, H1, D3: MODEL.D3, jawScale,
       w, tipChamfer: tipChamfer(w),
       slotDepth: 0.4 * MODEL.H1 * jawScale,
       hMax: JAW_STEP_LIMITS.h.max * jawScale,
@@ -428,14 +423,13 @@
   }
 
   const SPEC_LABELS = [
-    ['D', 'قطر بدنه'], ['D1', 'قطر نشیمنگاه پشت'], ['D2', 'قطر دایرهٔ پیچ‌ها'], ['D3', 'قطر سوراخ مرکزی'],
-    ['H', 'ارتفاع کل با فک'], ['H1', 'ارتفاع بدنه'], ['h', 'عمق نشیمنگاه'], ['z-d', 'تعداد و سایز پیچ'],
+    ['D', 'قطر بدنه'], ['D3', 'قطر سوراخ مرکزی'], ['H', 'ارتفاع کل با فک'], ['H1', 'ارتفاع بدنه'],
   ];
 
   function renderSpecs() {
-    const values = { ...MODEL, 'z-d': `${MODEL.z}-M${MODEL.d}` };
     $('#specs').innerHTML = SPEC_LABELS.map(([k, label]) =>
-      `<div><dt><span class="sym" dir="ltr">${k}</span> ${label}</dt><dd id="spec-${k}" dir="ltr">${values[k]}</dd></div>`).join('');
+      `<div><dt><span class="sym" dir="ltr">${k}</span> ${label}</dt><dd id="spec-${k}" dir="ltr"></dd></div>`).join('');
+    $('#spec-D3').textContent = fmt(MODEL.D3);
   }
 
   function syncBodyControls(g) {
@@ -445,8 +439,6 @@
       $(`#body${key}Out`).textContent = `${value} mm`;
       $(`#spec-${key}`).textContent = value;
     }
-    $('#spec-D1').textContent = fmt(g.D1);
-    $('#spec-D2').textContent = fmt(g.D2);
   }
 
   function syncControls(j, g, grip) {
