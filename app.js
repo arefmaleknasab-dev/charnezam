@@ -38,8 +38,8 @@
   const pts = (a) => a.map((p) => p.map((n) => +n.toFixed(2)).join(',')).join(' ');
   const $ = (s) => document.querySelector(s);
 
-  // The near pinion sits between jaws 4 and 1, measured from the side viewing direction.
-  const PIN_OFFSET_DEG = 37.6;
+  // The near pinion is halfway from the side viewing direction (jaw 4) to jaw 1.
+  const PIN_OFFSET_DEG = 45;
   const PIN_THETA = (PIN_OFFSET_DEG * Math.PI) / 180;
   // Front-view angles are clockwise from jaw 1; the second pinion is opposite the first.
   const PIN_FRONT_DEG = PIN_OFFSET_DEG - 90;
@@ -179,8 +179,9 @@
     s += `<g clip-path="url(#bodyClip)">` + [0, 90].map((a) =>
       `<rect class="thin slot" x="${-g.w / 2}" y="${-R * 1.05}" width="${g.w}" height="${R * 2.1}" transform="rotate(${a})"/>`).join('') + `</g>`;
     s += `<circle class="hid nofill" r="${g.D1 / 2}"/><circle class="ctr nofill" r="${g.D2 / 2}"/>`;
+    const mountingHoleAngle = (i) => ((15 + (i * 360) / g.z) * Math.PI) / 180;
     for (let i = 0; i < g.z; i++) {
-      const a = ((15 + (i * 360) / g.z) * Math.PI) / 180;
+      const a = mountingHoleAngle(i);
       s += `<circle class="hid nofill" cx="${Math.sin(a) * g.D2 / 2}" cy="${-Math.cos(a) * g.D2 / 2}" r="${g.d / 2}"/>`;
     }
     s += `<circle class="ln void" r="${g.D3 / 2}"/>`;
@@ -206,14 +207,16 @@
     }
 
     if (state.dims) {
-      const q = Math.SQRT1_2;
+      // Point to the lower-left mounting hole to keep both pinions clear.
+      const a = mountingHoleAngle(g.z - 1);
+      const dx = Math.sin(a);
+      const dy = -Math.cos(a);
       const r0 = g.D2 / 2;
       const r1 = R + 0.09 * D;
-      // Angle the mounting-hole leader away from the lower-right pinion.
-      const x = q * r1 - 0.03 * D;
-      const y = q * r1 + 0.03 * D;
-      s += `<line class="dim" x1="${q * r0}" y1="${q * r0}" x2="${x}" y2="${y}"/>`;
-      s += `<text class="dt" stroke-width="${0.014 * D}" x="${x + 0.015 * D}" y="${y + 0.02 * D}" font-size="${fs}">${g.z}-M${g.d}</text>`;
+      const x = dx * r1;
+      const y = dy * r1;
+      s += `<line class="dim" x1="${dx * r0}" y1="${dy * r0}" x2="${x}" y2="${y}"/>`;
+      s += `<text class="dt" stroke-width="${0.014 * D}" x="${x - 0.015 * D}" y="${y + 0.02 * D}" font-size="${fs}" text-anchor="end">${g.z}-M${g.d}</text>`;
     }
     svg.innerHTML = s;
   }
