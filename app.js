@@ -239,7 +239,7 @@
     const xn1 = x0 + 0.8 * sd;
     const hw = g.w / 2;
     const nd = 0.17 * g.w;
-    const hs = j.steps.map((x) => x.h);
+    const hs = segments(j).map((step) => step.h).reverse(); // Outermost step faces the viewer.
     const xT = Math.max(...hs);
     const P = [
       [xb, -hw], [xn0, -hw], [xn0, -hw + nd], [xn1, -hw + nd], [xn1, -hw], [xT, -hw],
@@ -249,12 +249,14 @@
     s += `<g class="jaw"><path class="ln" fill="${SIDE_JAW_FILL}" d="${roundedPath(P, [1, 2, 3, 4, 7, 8, 9, 10], 0.25 * nd)}"/>`;
     s += `<line class="ln" x1="${x0}" y1="${-hw}" x2="${x0}" y2="${hw}"/>`;
     s += `<line class="thin" stroke-opacity=".7" x1="${x0 + 0.17 * sd}" y1="${-hw}" x2="${x0 + 0.17 * sd}" y2="${hw}"/>`;
-    const seen = new Set();
-    hs.forEach((h) => {
-      if (h >= xT - 1e-6 || seen.has(h)) return;
-      seen.add(h);
+    // A step edge behind another step is visible only beyond the nearer step's extent.
+    let visibleExtent = 0;
+    for (const h of hs) {
+      if (h >= xT) break;
+      if (h <= visibleExtent) continue;
+      visibleExtent = h;
       s += `<line class="ln" x1="${h}" y1="${-hw}" x2="${h}" y2="${hw}"/>`;
-    });
+    }
     return `${s}</g>`;
   }
 
