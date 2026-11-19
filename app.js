@@ -122,9 +122,11 @@
   function gripRadius(j) {
     let r = j.p;
     if (state.gripStep === null) return r;
-    const selected = j.steps[state.gripStep];
+    // Lock to the joint between the selected step and its previous numbered step.
+    // When reversed, that previous step is the one just outside the joint.
+    const outside = j.steps[state.gripStep - (j.rev ? 1 : 0)];
     for (const step of segments(j)) {
-      if (step === selected) break;
+      if (step === outside) break;
       r += step.l;
     }
     return r;
