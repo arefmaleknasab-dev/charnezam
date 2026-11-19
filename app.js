@@ -140,11 +140,10 @@
   const steelShade = (lightness) => `hsl(210 16% ${lightness}%)`;
   const shade = (h, g) => steelShade(54 + 36 * clamp(h / g.hMax, 0, 1));
 
-  function endOnStepShade(h, radius, g) {
-    const height = clamp(h / g.hMax, 0, 1);
+  function endOnStepShade(stepIndex, radius, g) {
     const reach = clamp(radius / maxJawReach(g), 0, 1);
-    // Tall steps are darker, but moving a face outward brings it closer to the viewer.
-    return steelShade(74 - 22 * height + 24 * reach);
+    // Keep the step contrast independent of height; outward motion lightens each face.
+    return steelShade(59 + 5 * stepIndex + 24 * reach);
   }
 
   function badge(x, y, k, g) {
@@ -355,7 +354,7 @@
       const index = j.steps.indexOf(step);
       if (!j.rev) {
         // Hard stops follow the existing edges.
-        const color = endOnStepShade(h, radius, g);
+        const color = endOnStepShade(index, radius, g);
         stops += `<stop offset="${offset(visibleExtent)}" stop-color="${color}"/><stop offset="${offset(h)}" stop-color="${color}"/>`;
       }
       edits += stepEdge('outside-center', index, 'h', 'x', 1, [h, -hw], [h, hw]);
