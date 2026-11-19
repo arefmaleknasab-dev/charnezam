@@ -35,7 +35,6 @@
   const JAW_BADGE_OFFSET = 0.06;
   const JAW_BADGE_RADIUS = 0.036;
   const SIDE_JAW_FILL = 'hsl(210 16% 74%)';
-  const END_ON_STEP_FILLS = [SIDE_JAW_FILL, 'hsl(210 16% 67%)', 'hsl(210 16% 60%)'];
 
   const FA_DIGITS = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
   const fa = (n) => String(n).replace(/\d/g, (c) => FA_DIGITS[+c]);
@@ -133,9 +132,9 @@
     return r;
   }
 
-  function shade(h, g) {
+  function shade(h, g, invertLightness = false) {
     const t = clamp(h / g.hMax, 0, 1);
-    return `hsl(210 16% ${54 + 36 * t}%)`;
+    return `hsl(210 16% ${54 + 36 * (invertLightness ? 1 - t : t)}%)`;
   }
 
   function badge(x, y, k, g) {
@@ -343,8 +342,8 @@
       if (h <= visibleExtent) continue;
       const index = j.steps.indexOf(step);
       if (!j.rev) {
-        // Hard stops share the existing edges, so shading does not add strokes.
-        const color = END_ON_STEP_FILLS[index];
+        // The end-on view darkens with height. Hard stops follow the existing edges.
+        const color = shade(h, g, true);
         stops += `<stop offset="${offset(visibleExtent)}" stop-color="${color}"/><stop offset="${offset(h)}" stop-color="${color}"/>`;
       }
       edits += stepEdge('outside-center', index, 'h', 'x', 1, [h, -hw], [h, hw]);
@@ -352,11 +351,11 @@
       visibleExtent = h;
       lines += `<line class="ln" x1="${h}" y1="${-hw}" x2="${h}" y2="${hw}"/>`;
     }
-    const shade = stops && `<defs><linearGradient id="outsideCenterStepShade" gradientUnits="userSpaceOnUse" x1="${xb}" y1="0" x2="${xT}" y2="0">${stops}</linearGradient></defs>`;
-    const fill = shade ? 'url(#outsideCenterStepShade)' : undefined;
+    const gradient = stops && `<defs><linearGradient id="outsideCenterStepShade" gradientUnits="userSpaceOnUse" x1="${xb}" y1="0" x2="${xT}" y2="0">${stops}</linearGradient></defs>`;
+    const fill = gradient ? 'url(#outsideCenterStepShade)' : undefined;
     const surface = outsideJawSurface('path', shape, bevels, 'outsideCenterClip', fill);
     // The end-on jaw has no visible radial travel here; an upward drag opens it.
-    return `<rect class="slotin" x="${xb}" y="${-hw}" width="${-xb}" height="${g.w}"/>${shade}` +
+    return `<rect class="slotin" x="${xb}" y="${-hw}" width="${-xb}" height="${g.w}"/>${gradient}` +
       `<g class="jaw" data-axis="y" data-factor="-1" data-end-on>${surface}${lines}</g>${edits}`;
   }
 
