@@ -80,12 +80,12 @@
     svg .dimension-edge:is(.is-hovered, .is-active) .dimension-highlight { opacity: 1; }
 
     .controls { display: flex; flex-direction: column; gap: 1.1rem; }
-    button {
+    button, select {
       font: inherit; color: var(--ink); background: var(--panel); border: 1px solid var(--ink);
       border-radius: 6px; padding: .35rem .8rem; cursor: pointer;
     }
     button:hover { background: #f1ece0; }
-    button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
     .row { display: grid; grid-template-columns: 6.5rem minmax(0, 1fr) 5.2rem; align-items: center; gap: .6rem; }
     .row label { font-size: .9rem; }
@@ -106,6 +106,8 @@
     .step h3 { margin: 0 0 .2rem; font-size: .95rem; }
     .step h3 span { font-weight: 400; color: var(--muted); font-size: .8rem; margin-inline-start: .3rem; }
 
+    .grip-ref { display: flex; align-items: center; flex-wrap: wrap; gap: .6rem; margin-bottom: .4rem; }
+    .grip-ref label { font-size: .9rem; }
     .readouts { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: .6rem; margin: 0; }
     .readouts div { display: block; border: 0; border-inline-start: 3px solid var(--accent); padding: .1rem .7rem; }
     .readouts dd { font-size: 1.05rem; }
@@ -183,6 +185,18 @@
         <div class="steps" id="steps"></div>
       </div>
 
+      <div>
+        <div class="grip-ref">
+          <label for="gripStep">مرجع دایرهٔ قرمز</label>
+          <select id="gripStep" aria-describedby="gripHint">
+            <option value="">آزاد (لبهٔ داخلی)</option>
+            <option value="1">قفل روی پلهٔ ۲</option>
+            <option value="2">قفل روی پلهٔ ۳</option>
+          </select>
+        </div>
+        <p class="body-hint" id="gripHint">روی سطح پلهٔ ۲ یا ۳ کلیک کنید تا دایرهٔ قرمز به لبهٔ رو‌به‌مرکز آن قفل شود. کلیک دوباره یا کلیک روی پلهٔ ۱ قفل را آزاد می‌کند.</p>
+      </div>
+
       <dl class="readouts" aria-live="polite">
         <div><dt>قطر دهانهٔ گیرش</dt><dd id="rdGrip" dir="ltr"></dd></div>
         <div><dt>طول کل فک</dt><dd id="rdLen" dir="ltr"></dd></div>
@@ -195,6 +209,6 @@
       </div>
     </section>
   </main>
-  <script src="./app.js?v=27"></script>
+  <script src="./app.js?v=28"></script>
 </body>
 </html>

@@ -110,7 +110,7 @@
   }
 
   // All four jaws share one profile in reference units so resizing never rounds away edits.
-  const state = { body: defaultBody(), jawAtRef: defaultReferenceJaw(), dims: true };
+  const state = { body: defaultBody(), jawAtRef: defaultReferenceJaw(), gripStep: null, dims: true };
   let diagramDrag = null;
 
   const jawLen = (j) => j.steps.reduce((s, x) => s + x.l, 0);
@@ -118,6 +118,17 @@
   // Keep half of each jaw's radial length within the body at maximum opening.
   const pMax = (j, g) => Math.max(pMin(j, g), g.D / 2 - MIN_JAW_ENGAGEMENT * jawLen(j));
   const segments = (j) => (j.rev ? [...j.steps].reverse() : j.steps);
+
+  function gripRadius(j) {
+    let r = j.p;
+    if (state.gripStep === null) return r;
+    const selected = j.steps[state.gripStep];
+    for (const step of segments(j)) {
+      if (step === selected) break;
+      r += step.l;
+    }
+    return r;
+  }
 
   function shade(h, g) {
     const t = clamp(h / g.hMax, 0, 1);
@@ -195,7 +206,7 @@
     frame($('#outside'), -g.H1 - pad, -sideY, g.H1 + g.hMax + 2 * pad, 2 * sideY);
   }
 
-  function renderFront(j, g) {
+  function renderFront(j, g, grip) {
     const D = g.D;
     const R = D / 2;
     const fs = 0.042 * D;
@@ -228,11 +239,11 @@
       s += `<g class="step-edges" transform="${rotation}">${edits}</g>`;
     }
 
-    s += `<circle class="grip" r="${j.p}"/>`;
+    s += `<circle class="grip" r="${grip}"/>`;
     if (state.dims) {
-      const q = j.p * Math.SQRT1_2 + 0.02 * D;
+      const q = grip * Math.SQRT1_2 + 0.02 * D;
       // Keep the opening label clear of the upper-left pinion at maximum travel.
-      s += `<text class="dt accent" stroke-width="${0.014 * D}" x="${q}" y="${-q}" text-anchor="start" font-size="${fs}">Ø${fmt(2 * j.p)}</text>`;
+      s += `<text class="dt accent" stroke-width="${0.014 * D}" x="${q}" y="${-q}" text-anchor="start" font-size="${fs}">Ø${fmt(2 * grip)}</text>`;
     }
 
     const r = Math.max(j.p + jawLen(j), R) + JAW_BADGE_OFFSET * D;
@@ -320,7 +331,7 @@
     const bevels = j.rev ? [-1, 1].map((sign) => tipChamferBand(xb, j.steps[0].h, sign * (hw - c), sign * hw)).join('') : '';
     let s = `<rect class="slotin" x="${xb}" y="${-hw}" width="${-xb}" height="${g.w}"/>`;
     // The end-on jaw has no visible radial travel here; an upward drag opens it.
-    s += `<g class="jaw" data-axis="y" data-factor="-1">${outsideJawSurface('path', shape, bevels, 'outsideCenterClip')}`;
+    s += `<g class="jaw" data-axis="y" data-factor="-1" data-end-on>${outsideJawSurface('path', shape, bevels, 'outsideCenterClip')}`;
     s += `<line class="thin" stroke-opacity=".7" x1="${x0 + 0.17 * sd}" y1="${-hw}" x2="${x0 + 0.17 * sd}" y2="${hw}"/>`;
     // A step edge behind another step is visible only beyond the nearer step's extent.
     let visibleExtent = 0;
@@ -392,7 +403,7 @@
     $('#spec-D2').textContent = fmt(g.D2);
   }
 
-  function syncControls(j, g) {
+  function syncControls(j, g, grip) {
     const pos = $('#pos');
     pos.min = String(pMin(j, g));
     pos.max = String(pMax(j, g));
@@ -416,7 +427,8 @@
       }
     });
 
-    $('#rdGrip').textContent = `Ø ${fmt(2 * j.p)} mm`;
+    $('#gripStep').value = state.gripStep ?? '';
+    $('#rdGrip').textContent = `Ø ${fmt(2 * grip)} mm`;
     $('#rdLen').textContent = `${fmt(jawLen(j))} mm`;
     const hAct = g.H1 + Math.max(...j.steps.map((x) => x.h));
     $('#spec-H').textContent = fmt(hAct);
@@ -429,9 +441,10 @@
     const p = clamp(j.p, pMin(j, g), pMax(j, g));
     if (p !== j.p) state.jawAtRef.p = p / g.jawScale;
     j.p = p;
-    renderFront(j, g);
+    const grip = gripRadius(j);
+    renderFront(j, g, grip);
     renderOutside(j, g);
-    syncControls(j, g);
+    syncControls(j, g, grip);
   }
 
   function renderBody() {
@@ -463,6 +476,36 @@
     if (next === step[key]) return;
     step[key] = next;
     render(g);
+  }
+
+  function setGripStep(index) {
+    const next = index === 1 || index === 2 ? index : null;
+    if (state.gripStep === next) return;
+    state.gripStep = next;
+    render();
+  }
+
+  function diagramPoint(element, event) {
+    const transform = element.getScreenCTM();
+    return transform ? new DOMPoint(event.clientX, event.clientY).matrixTransform(transform.inverse()) : null;
+  }
+
+  function stepAtPoint(target, event, jaw) {
+    const p = diagramPoint(target, event);
+    if (!p) return null;
+    const ordered = segments(jaw);
+    if (target.hasAttribute('data-end-on')) {
+      if (p.x < 0) return null; // A click on the shank does not select a step.
+      const visible = [...ordered].reverse().find((step) => p.x <= step.h);
+      return visible ? jaw.steps.indexOf(visible) : null;
+    }
+    let edge = jaw.p;
+    const radial = Math.abs(p.y);
+    for (const step of ordered) {
+      edge += step.l;
+      if (radial <= edge) return jaw.steps.indexOf(step);
+    }
+    return jaw.steps.indexOf(ordered[ordered.length - 1]);
   }
 
   function diagramTarget(svg, event, top = event.target) {
@@ -505,7 +548,7 @@
     return edge;
   }
 
-  function dragSettings(target) {
+  function dragSettings(target, event) {
     const { edge: id, i, k: key, axis, factor } = target.dataset;
     const g = geometry(state.body);
     if (target.classList.contains('jaw')) {
@@ -514,6 +557,7 @@
       const max = pMax(jaw, g);
       return {
         axis, factor: +factor, min, initial: jaw.p, increment: POS_INCREMENT * g.jawScale,
+        tapStep: stepAtPoint(target, event, jaw),
         apply: (value) => setPos(clamp(value, min, max), g),
       };
     }
@@ -539,9 +583,8 @@
 
   function bindDiagramEditing(svg, stopAnimation) {
     const coordinate = (event, axis) => {
-      const transform = svg.getScreenCTM();
-      if (!transform) return NaN;
-      const p = new DOMPoint(event.clientX, event.clientY).matrixTransform(transform.inverse());
+      const p = diagramPoint(svg, event);
+      if (!p) return NaN;
       return axis === 'radius' ? Math.hypot(p.x, p.y) : p[axis];
     };
     const cursor = (target, active = false) => {
@@ -559,10 +602,14 @@
       svg.style.cursor = target ? cursor(target) : '';
     };
     const moveDrag = (event) => {
-      const { axis, factor, start, initial, min, increment, apply } = diagramDrag;
+      const { axis, factor, start, initial, min, increment, apply, tapStep, pressX, pressY } = diagramDrag;
+      if (tapStep !== undefined && !diagramDrag.moved) {
+        const slop = event.pointerType === 'touch' ? 6 : 4;
+        if (Math.hypot(event.clientX - pressX, event.clientY - pressY) < slop) return;
+        diagramDrag.moved = true;
+      }
       const delta = (coordinate(event, axis) - start) * factor;
       const ticks = Math.round((initial + delta - min) / increment);
-      // A click alone must not snap a jaw from its current position to a slider tick.
       apply(Math.abs(delta) < increment / 2 ? initial : min + ticks * increment);
     };
 
@@ -577,14 +624,17 @@
       if (!event.isPrimary || event.button !== 0 || diagramDrag) return;
       const target = diagramTarget(svg, event);
       if (!target) return;
-      const settings = dragSettings(target);
+      const settings = dragSettings(target, event);
       const start = coordinate(event, settings.axis);
       if (!Number.isFinite(start)) return;
       stopAnimation();
       setHover(null);
       // Capture on the mounted SVG, not on the face or edge replaced by rendering.
       svg.setPointerCapture(event.pointerId);
-      diagramDrag = { ...settings, svg, pointerId: event.pointerId, start };
+      diagramDrag = {
+        ...settings, svg, pointerId: event.pointerId, start,
+        pressX: event.clientX, pressY: event.clientY, moved: false,
+      };
       if (settings.id) target.classList.add('is-active');
       svg.style.cursor = cursor(target, true);
       event.preventDefault();
@@ -596,7 +646,9 @@
     svg.addEventListener('pointerup', (event) => {
       if (!ownsDrag(event)) return;
       moveDrag(event);
+      const { tapStep, moved } = diagramDrag;
       endDiagramDrag();
+      if (tapStep != null && !moved) setGripStep(tapStep === state.gripStep ? null : tapStep);
       if (event.pointerType !== 'touch') setHover(diagramTarget(svg, event, document.elementFromPoint(event.clientX, event.clientY)));
     });
     const cancelDrag = (event) => { if (ownsDrag(event)) endDiagramDrag(); };
@@ -685,6 +737,11 @@
       setJawStep(+i, k, el.valueAsNumber / g.jawScale, g);
     });
 
+    $('#gripStep').addEventListener('change', (ev) => {
+      interruptMotion();
+      setGripStep(+ev.target.value);
+    });
+
     $('#dims').addEventListener('change', (ev) => {
       state.dims = ev.target.checked;
       render();
@@ -693,6 +750,7 @@
     $('#reset').addEventListener('click', () => {
       interruptMotion();
       state.jawAtRef = defaultReferenceJaw();
+      state.gripStep = null;
       render();
     });
 
