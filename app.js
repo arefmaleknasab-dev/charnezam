@@ -127,11 +127,10 @@
   function gripRadius(j) {
     let r = j.p;
     if (state.gripStep === null) return r;
-    // Lock to the joint between the selected step and its previous numbered step.
-    // When reversed, that previous step is the one just outside the joint.
-    const outside = j.steps[state.gripStep - (j.rev ? 1 : 0)];
+    // Walk out from the center to the selected step's inner opening.
+    const selected = j.steps[state.gripStep];
     for (const step of segments(j)) {
-      if (step === outside) break;
+      if (step === selected) break;
       r += step.l;
     }
     return r;
@@ -463,7 +462,10 @@
       }
     });
 
-    $('#gripStep').value = state.gripStep ?? '';
+    const gripStep = $('#gripStep');
+    const firstStep = gripStep.querySelector('option[value="0"]');
+    firstStep.disabled = firstStep.hidden = !j.rev;
+    gripStep.value = state.gripStep ?? '';
     $('#rdGrip').textContent = `Ø ${fmt(2 * grip)} mm`;
     $('#rdLen').textContent = `${fmt(jawLen(j))} mm`;
     const hAct = g.H1 + Math.max(...j.steps.map((x) => x.h));
@@ -514,8 +516,13 @@
     render(g);
   }
 
+  function normalizeGripStep(index) {
+    const { rev, steps } = state.jawAtRef;
+    return Number.isInteger(index) && index >= (rev ? 0 : 1) && index < steps.length ? index : null;
+  }
+
   function setGripStep(index) {
-    const next = index === 1 || index === 2 ? index : null;
+    const next = normalizeGripStep(index);
     if (state.gripStep === next) return;
     state.gripStep = next;
     render();
@@ -761,6 +768,11 @@
     $('#rev').addEventListener('click', () => {
       interruptMotion();
       state.jawAtRef.rev = !state.jawAtRef.rev;
+      if (state.gripStep !== null) {
+        // The other step now faces inward at the same joint after reversal.
+        const offset = state.jawAtRef.rev ? -1 : 1;
+        state.gripStep = normalizeGripStep(state.gripStep + offset);
+      }
       render();
     });
 
@@ -775,7 +787,7 @@
 
     $('#gripStep').addEventListener('change', (ev) => {
       interruptMotion();
-      setGripStep(+ev.target.value);
+      setGripStep(ev.target.value === '' ? null : Number(ev.target.value));
     });
 
     $('#dims').addEventListener('change', (ev) => {
