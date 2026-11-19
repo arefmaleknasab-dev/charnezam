@@ -233,14 +233,17 @@
     const h = j.steps[0].h;
     const c = chamfer(j, g);
     const rc = sign * (j.rev ? u - c : j.p + c);
-    const bevel = j.rev ? tipChamferBand(x0, h, rc, sign * u) +
-      `<line class="thin" x1="${x0}" y1="${rc}" x2="${h}" y2="${rc}"/>` : '';
+    const bevelEdge = sign * (j.rev ? u : j.p);
+    let bevel = tipChamferBand(x0, h, rc, bevelEdge);
+    if (j.rev) {
+      bevel += `<line class="thin" x1="${x0}" y1="${rc}" x2="${h}" y2="${rc}"/>`;
+    }
     const clipId = sign < 0 ? 'outsideTopClip' : 'outsideBottomClip';
     const jaw = `<g class="jaw">${outsideJawSurface('polygon', shape, bevel, clipId)}</g>`;
 
-    // Hidden edges are drawn after the body: the normal tip and the guide grooves.
+    // Draw hidden guide grooves over the body only where the jaws protrude.
     const R = g.D / 2;
-    let over = j.rev ? '' : `<line class="cham" x1="0" y1="${rc}" x2="${h}" y2="${rc}"/>`;
+    let over = '';
     if (u > R) {
       [x0 + 0.34 * sd, x0 + 0.8 * sd].forEach((x) => {
         over += `<line class="hid np" x1="${x}" y1="${sign * R}" x2="${x}" y2="${sign * u}"/>`;
@@ -288,8 +291,8 @@
 
     const top = outsideJawSide(j, -1, g);
     const bottom = outsideJawSide(j, 1, g);
-    let s = j.rev ? `<defs><linearGradient id="outsideJawShade" x1="0%" y1="0%" x2="100%" y2="100%">` +
-      `<stop offset="0" stop-color="#c5cfd8"/><stop offset="1" stop-color="#a2b0be"/></linearGradient></defs>` : '';
+    let s = `<defs><linearGradient id="outsideJawShade" x1="0%" y1="0%" x2="100%" y2="100%">` +
+      `<stop offset="0" stop-color="#c5cfd8"/><stop offset="1" stop-color="#a2b0be"/></linearGradient></defs>`;
     s += top.jaw + bottom.jaw;
     s += `<rect class="ln body" x="${rearX}" y="${-R}" width="${H1}" height="${D}"/>`;
     s += top.over + bottom.over;
