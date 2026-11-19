@@ -38,9 +38,13 @@
   const pts = (a) => a.map((p) => p.map((n) => +n.toFixed(2)).join(',')).join(' ');
   const $ = (s) => document.querySelector(s);
 
-  // Pinion angle around the body, measured from the exterior viewing direction towards jaw 1.
-  const PIN_THETA = (37.6 * Math.PI) / 180;
-  const PIN_FRONT_DEG = 90 - 37.6; // same screw in the front view, clockwise from jaw 1
+  // The near pinion sits between jaws 4 and 1, measured from the side viewing direction.
+  const PIN_OFFSET_DEG = 37.6;
+  const PIN_THETA = (PIN_OFFSET_DEG * Math.PI) / 180;
+  // Front-view angles are clockwise from jaw 1; the second pinion is opposite the first.
+  const PIN_FRONT_DEG = PIN_OFFSET_DEG - 90;
+  const PIN_FRONT_ANGLES = [PIN_FRONT_DEG, PIN_FRONT_DEG + 180];
+  const frontPinions = (markup) => PIN_FRONT_ANGLES.map((angle) => `<g transform="rotate(${angle})">${markup}</g>`).join('');
   const pinRadius = (g) => 0.065 * g.D;
   // One full turn of the screw per 3% of D of jaw travel.
   const pinAngle = (j, g) => ((j.p / (0.03 * g.D)) * 360) % 360;
@@ -170,7 +174,7 @@
     const prot = 0.014 * D;
     const phi = (pinAngle(j, g) * Math.PI) / 180;
     const sock = pr * Math.max(Math.abs(0.55 * Math.sin(phi)), Math.abs(0.45 * Math.cos(phi)));
-    s += `<g transform="rotate(${PIN_FRONT_DEG})"><rect class="ln pin" x="${-pr}" y="${-R - prot}" width="${2 * pr}" height="${prot + 0.01 * D}"/></g>`;
+    s += frontPinions(`<rect class="ln pin" x="${-pr}" y="${-R - prot}" width="${2 * pr}" height="${prot + 0.01 * D}"/>`);
     s += `<circle class="ln body" r="${R}"/><circle class="thin nofill" r="${R - 0.02 * D}"/>`;
     s += `<g clip-path="url(#bodyClip)">` + [0, 90].map((a) =>
       `<rect class="thin slot" x="${-g.w / 2}" y="${-R * 1.05}" width="${g.w}" height="${R * 2.1}" transform="rotate(${a})"/>`).join('') + `</g>`;
@@ -180,8 +184,8 @@
       s += `<circle class="hid nofill" cx="${Math.sin(a) * g.D2 / 2}" cy="${-Math.cos(a) * g.D2 / 2}" r="${g.d / 2}"/>`;
     }
     s += `<circle class="ln void" r="${g.D3 / 2}"/>`;
-    s += `<g transform="rotate(${PIN_FRONT_DEG})">` + [-1, 1].map((sg) =>
-      `<line class="hid np" x1="${sg * sock}" y1="${-R - prot}" x2="${sg * sock}" y2="${-R + 0.03 * D}"/>`).join('') + `</g>`;
+    s += frontPinions([-1, 1].map((sg) =>
+      `<line class="hid np" x1="${sg * sock}" y1="${-R - prot}" x2="${sg * sock}" y2="${-R + 0.03 * D}"/>`).join(''));
     s += `<line class="ctr" x1="${-0.56 * D}" y1="0" x2="${0.56 * D}" y2="0"/><line class="ctr" x1="0" y1="${-0.56 * D}" x2="0" y2="${0.56 * D}"/>`;
 
     const jaw = frontJawShape(j, g);
@@ -205,8 +209,11 @@
       const q = Math.SQRT1_2;
       const r0 = g.D2 / 2;
       const r1 = R + 0.09 * D;
-      s += `<line class="dim" x1="${q * r0}" y1="${q * r0}" x2="${q * r1}" y2="${q * r1}"/>`;
-      s += `<text class="dt" stroke-width="${0.014 * D}" x="${q * r1 + 0.015 * D}" y="${q * r1 + 0.02 * D}" font-size="${fs}">${g.z}-M${g.d}</text>`;
+      // Angle the mounting-hole leader away from the lower-right pinion.
+      const x = q * r1 - 0.03 * D;
+      const y = q * r1 + 0.03 * D;
+      s += `<line class="dim" x1="${q * r0}" y1="${q * r0}" x2="${x}" y2="${y}"/>`;
+      s += `<text class="dt" stroke-width="${0.014 * D}" x="${x + 0.015 * D}" y="${y + 0.02 * D}" font-size="${fs}">${g.z}-M${g.d}</text>`;
     }
     svg.innerHTML = s;
   }
@@ -224,7 +231,7 @@
       `<g clip-path="url(#${clipId})">${bevels}</g><${tag} class="ln nofill" ${shape}/>`;
   }
 
-  // Exterior side view from jaw 2: x = 0 is the fixed front face; the rear is at -H1.
+  // Exterior side view from jaw 4: x = 0 is the fixed front face; the rear is at -H1.
   function outsideJawSide(j, sign, g) {
     const sd = g.slotDepth;
     const x0 = -sd;
