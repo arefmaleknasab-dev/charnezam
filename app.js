@@ -201,16 +201,18 @@
     svg.innerHTML = s;
   }
 
-  // Project the bevel as a shaded band between the break line and the tip edge.
-  function tipChamferBand(h, innerY, outerY) {
-    return `<rect class="jaw-bevel" x="0" y="${Math.min(innerY, outerY)}" width="${h}" height="${Math.abs(outerY - innerY)}"/>` +
-      `<line class="thin" x1="0" y1="${innerY}" x2="${h}" y2="${innerY}"/>`;
+  // Shade the bevel along the full axial length, including the visible shank.
+  function tipChamferBand(xStart, xEnd, innerY, outerY) {
+    return `<rect class="jaw-bevel" x="${xStart}" y="${Math.min(innerY, outerY)}" width="${xEnd - xStart}" height="${Math.abs(outerY - innerY)}"/>` +
+      `<line class="thin" x1="${xStart}" y1="${innerY}" x2="${xEnd}" y2="${innerY}"/>`;
   }
 
-  function outsideJawSurface(tag, shape, bevels) {
+  function outsideJawSurface(tag, shape, bevels, clipId) {
     if (!bevels) return `<${tag} class="ln" fill="${SIDE_JAW_FILL}" ${shape}/>`;
-    // Stroke the silhouette after filling the bevels so its outline stays crisp.
-    return `<${tag} fill="${SIDE_JAW_FILL}" ${shape}/>${bevels}<${tag} class="ln nofill" ${shape}/>`;
+    // Keep the bands inside the notches and paint the silhouette stroke last.
+    return `<${tag} fill="url(#outsideJawShade)" ${shape}/>` +
+      `<defs><clipPath id="${clipId}"><${tag} ${shape}/></clipPath></defs>` +
+      `<g clip-path="url(#${clipId})">${bevels}</g><${tag} class="ln nofill" ${shape}/>`;
   }
 
   // Exterior side view from jaw 2: x = 0 is the fixed front face; the rear is at -H1.
@@ -232,8 +234,9 @@
     const h = j.steps[0].h;
     const c = chamfer(j, g);
     const rc = sign * (j.rev ? u - c : j.p + c);
-    const bevel = j.rev ? tipChamferBand(h, rc, sign * u) : '';
-    const jaw = `<g class="jaw">${outsideJawSurface('polygon', shape, bevel)}</g>`;
+    const bevel = j.rev ? tipChamferBand(x0, h, rc, sign * u) : '';
+    const clipId = sign < 0 ? 'outsideTopClip' : 'outsideBottomClip';
+    const jaw = `<g class="jaw">${outsideJawSurface('polygon', shape, bevel, clipId)}</g>`;
 
     // Hidden edges are drawn after the body: the normal tip and the guide grooves.
     const R = g.D / 2;
@@ -262,9 +265,9 @@
     ];
     const shape = `d="${roundedPath(P, [1, 2, 3, 4, 7, 8, 9, 10], 0.25 * nd)}"`;
     const c = chamfer(j, g);
-    const bevels = j.rev ? [-1, 1].map((sign) => tipChamferBand(j.steps[0].h, sign * (hw - c), sign * hw)).join('') : '';
+    const bevels = j.rev ? [-1, 1].map((sign) => tipChamferBand(xb, j.steps[0].h, sign * (hw - c), sign * hw)).join('') : '';
     let s = `<rect class="slotin" x="${xb}" y="${-hw}" width="${-xb}" height="${g.w}"/>`;
-    s += `<g class="jaw">${outsideJawSurface('path', shape, bevels)}`;
+    s += `<g class="jaw">${outsideJawSurface('path', shape, bevels, 'outsideCenterClip')}`;
     s += `<line class="ln" x1="${x0}" y1="${-hw}" x2="${x0}" y2="${hw}"/>`;
     s += `<line class="thin" stroke-opacity=".7" x1="${x0 + 0.17 * sd}" y1="${-hw}" x2="${x0 + 0.17 * sd}" y2="${hw}"/>`;
     // A step edge behind another step is visible only beyond the nearer step's extent.
@@ -286,7 +289,9 @@
 
     const top = outsideJawSide(j, -1, g);
     const bottom = outsideJawSide(j, 1, g);
-    let s = top.jaw + bottom.jaw;
+    let s = j.rev ? `<defs><linearGradient id="outsideJawShade" x1="0%" y1="0%" x2="100%" y2="100%">` +
+      `<stop offset="0" stop-color="#c5cfd8"/><stop offset="1" stop-color="#a2b0be"/></linearGradient></defs>` : '';
+    s += top.jaw + bottom.jaw;
     s += `<rect class="ln body" x="${rearX}" y="${-R}" width="${H1}" height="${D}"/>`;
     s += top.over + bottom.over;
     s += outsideJawFront(j, g);
