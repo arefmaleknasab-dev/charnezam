@@ -140,6 +140,7 @@
 
   const steelShade = (lightness) => `hsl(210 16% ${lightness}%)`;
   const shade = (h, g) => steelShade(54 + 36 * clamp(h / g.hMax, 0, 1));
+  const bodyDepthLightness = (depth) => SIDE_BODY_SHADOW + (SIDE_BODY_HIGHLIGHT - SIDE_BODY_SHADOW) * depth;
 
   function endOnStepShade(stepIndex, radius, g) {
     const reach = clamp(radius / maxJawReach(g), 0, 1);
@@ -149,12 +150,11 @@
 
   function reversedEndOnLightness(radius, g) {
     const R = g.D / 2;
-    const offset = radius - R;
-    // The face is flush with the brightest part of the cylinder at radius R.
-    // Keep a smaller lightening range below the surface, so it still looks like steel.
-    if (offset <= 0) return SIDE_BODY_HIGHLIGHT + 5 * clamp(-offset / R, 0, 1);
-    const protrusion = clamp(offset / (maxJawReach(g) - R), 0, 1);
-    return SIDE_BODY_HIGHLIGHT - 24 * protrusion;
+    // Use the body tone at the same depth until the face reaches the bright centerline.
+    if (radius <= R) return bodyDepthLightness(clamp(radius / R, 0, 1));
+    // Lighten further as the face comes forward, but leave headroom below white.
+    const protrusion = clamp((radius - R) / (maxJawReach(g) - R), 0, 1);
+    return SIDE_BODY_HIGHLIGHT + 6 * protrusion;
   }
 
   function badge(x, y, k, g) {
@@ -387,8 +387,7 @@
       const y = 2 * offset - 1;
       // The projected cylinder is closest at its center and recedes toward both rims.
       const depth = Math.sqrt(1 - y * y);
-      const lightness = SIDE_BODY_SHADOW + (SIDE_BODY_HIGHLIGHT - SIDE_BODY_SHADOW) * depth;
-      return `<stop offset="${offset}" stop-color="${steelShade(lightness)}"/>`;
+      return `<stop offset="${offset}" stop-color="${steelShade(bodyDepthLightness(depth))}"/>`;
     });
     // Share one coordinate system so the body and jaw recesses match at every height.
     return `<linearGradient id="outsideBodyShade" gradientUnits="userSpaceOnUse" x1="0" y1="${-R}" x2="0" y2="${R}">${stops.join('')}</linearGradient>`;
