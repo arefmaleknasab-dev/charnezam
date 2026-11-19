@@ -14,10 +14,20 @@
     p: 19,
     steps: [{ l: 17.5, h: 27 }, { l: 16.5, h: 18 }, { l: 16.5, h: 9 }],
   };
+  const JAW_STEP_INCREMENT = 0.5;
   const JAW_STEP_LIMITS = {
     l: { min: 6.5, max: 32 },
     h: { min: 2.5, max: 40.5 },
   };
+  const jawWidth = (D) => 0.14 * D;
+  const tipChamfer = (w) => 0.35 * w;
+  // Keep a straight section on step 1 even at its shortest allowed length.
+  const MIN_TIP_STEP_LENGTH = (Math.floor(tipChamfer(jawWidth(JAW_REFERENCE.D)) / JAW_STEP_INCREMENT) + 1) * JAW_STEP_INCREMENT;
+
+  function jawStepLimits(key, index) {
+    const limits = JAW_STEP_LIMITS[key];
+    return key === 'l' && index === 0 ? { ...limits, min: Math.max(limits.min, MIN_TIP_STEP_LENGTH) } : limits;
+  }
   const JAW_COUNT = 4;
   const SIDE_JAW_FILL = 'hsl(210 16% 74%)';
 
@@ -61,13 +71,14 @@
 
   function geometry({ D, H1 }) {
     const jawScale = D / JAW_REFERENCE.D;
+    const w = jawWidth(D);
     // Move the mounting seat and bolt circle inward together only when the rim needs clearance.
     const mountingReduction = Math.max(0, MODEL.D2 + MODEL.d + 2 * MIN_MOUNTING_RIM - D);
     return {
       ...MODEL, D, H1, jawScale,
       D1: MODEL.D1 - mountingReduction,
       D2: MODEL.D2 - mountingReduction,
-      w: 0.14 * D,
+      w, tipChamfer: tipChamfer(w),
       slotDepth: 0.4 * MODEL.H1 * jawScale,
       hMax: JAW_STEP_LIMITS.h.max * jawScale,
     };
@@ -93,8 +104,7 @@
   const state = { body: defaultBody(), jawAtRef: defaultReferenceJaw(), dims: true };
 
   const jawLen = (j) => j.steps.reduce((s, x) => s + x.l, 0);
-  const chamfer = (j, g) => Math.min(0.35 * g.w, 0.9 * j.steps[0].l);
-  const pMin = (j, g) => (j.rev ? g.w / 2 : g.w / 2 - chamfer(j, g));
+  const pMin = (j, g) => (j.rev ? g.w / 2 : g.w / 2 - g.tipChamfer);
   const pMax = (j, g) => Math.max(pMin(j, g), g.D / 2 - 0.65 * jawLen(j));
   const segments = (j) => (j.rev ? [...j.steps].reverse() : j.steps);
 
@@ -110,7 +120,7 @@
 
   function frontJawShape(j, g) {
     const w = g.w;
-    const c = chamfer(j, g);
+    const c = g.tipChamfer;
     const th = w / 2 - c;
     let u = j.p;
     let out = '';
@@ -231,7 +241,7 @@
     P.push([xt, u], [xt, u - dt], [x0, u - dt]);
     const shape = `points="${pts(P.map(([x, r]) => [x, sign * r]))}"`;
     const h = j.steps[0].h;
-    const c = chamfer(j, g);
+    const c = g.tipChamfer;
     const rc = sign * (j.rev ? u - c : j.p + c);
     const bevelEdge = sign * (j.rev ? u : j.p);
     const bevel = tipChamferBand(x0, h, rc, bevelEdge) +
@@ -265,7 +275,7 @@
       [xT, hw], [xn1, hw], [xn1, hw - nd], [xn0, hw - nd], [xn0, hw], [xb, hw],
     ];
     const shape = `d="${roundedPath(P, [1, 2, 3, 4, 7, 8, 9, 10], 0.25 * nd)}"`;
-    const c = chamfer(j, g);
+    const c = g.tipChamfer;
     const bevels = j.rev ? [-1, 1].map((sign) => tipChamferBand(xb, j.steps[0].h, sign * (hw - c), sign * hw)).join('') : '';
     let s = `<rect class="slotin" x="${xb}" y="${-hw}" width="${-xb}" height="${g.w}"/>`;
     s += `<g class="jaw">${outsideJawSurface('path', shape, bevels, 'outsideCenterClip')}`;
@@ -346,11 +356,12 @@
     $('#revState').textContent = j.rev ? 'معکوس' : 'عادی';
 
     j.steps.forEach((st, i) => {
-      for (const [key, { min, max }] of Object.entries(JAW_STEP_LIMITS)) {
+      for (const key of Object.keys(JAW_STEP_LIMITS)) {
+        const { min, max } = jawStepLimits(key, i);
         const input = $(`#${key}${i}`);
         input.min = String(min * g.jawScale);
         input.max = String(max * g.jawScale);
-        input.step = String(0.5 * g.jawScale);
+        input.step = String(JAW_STEP_INCREMENT * g.jawScale);
         input.value = String(st[key]);
         $(`#${key}o${i}`).textContent = `${fmt(st[key])} mm`;
       }
@@ -384,12 +395,12 @@
         <h3>پله ${fa(i + 1)} <span>${stepNotes[i]}</span></h3>
         <div class="row">
           <label for="l${i}">طول شعاعی</label>
-          <input type="range" id="l${i}" data-i="${i}" data-k="l" step="0.5">
+          <input type="range" id="l${i}" data-i="${i}" data-k="l" step="${JAW_STEP_INCREMENT}">
           <output id="lo${i}" for="l${i}" dir="ltr"></output>
         </div>
         <div class="row">
           <label for="h${i}">ارتفاع</label>
-          <input type="range" id="h${i}" data-i="${i}" data-k="h" step="0.5">
+          <input type="range" id="h${i}" data-i="${i}" data-k="h" step="${JAW_STEP_INCREMENT}">
           <output id="ho${i}" for="h${i}" dir="ltr"></output>
         </div>
       </div>`).join('');
@@ -450,12 +461,13 @@
 
     $('#steps').addEventListener('input', (ev) => {
       const el = ev.target;
-      const limits = JAW_STEP_LIMITS[el.dataset.k];
+      const { k, i } = el.dataset;
+      const index = +i;
+      const limits = jawStepLimits(k, index);
       if (!limits || !Number.isFinite(el.valueAsNumber)) return;
       cancelAnimationFrame(anim);
       const g = geometry(state.body);
-      const value = clamp(el.valueAsNumber / g.jawScale, limits.min, limits.max);
-      state.jawAtRef.steps[+el.dataset.i][el.dataset.k] = value;
+      state.jawAtRef.steps[index][k] = clamp(el.valueAsNumber / g.jawScale, limits.min, limits.max);
       render(g);
     });
 
