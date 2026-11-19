@@ -35,6 +35,7 @@
   const JAW_BADGE_OFFSET = 0.06;
   const JAW_BADGE_RADIUS = 0.036;
   const SIDE_JAW_FILL = 'hsl(210 16% 74%)';
+  const END_ON_STEP_FILLS = [SIDE_JAW_FILL, 'hsl(210 16% 67%)', 'hsl(210 16% 60%)'];
 
   const FA_DIGITS = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
   const fa = (n) => String(n).replace(/\d/g, (c) => FA_DIGITS[+c]);
@@ -261,10 +262,10 @@
     return `<rect class="jaw-bevel" x="${xStart}" y="${Math.min(innerY, outerY)}" width="${xEnd - xStart}" height="${Math.abs(outerY - innerY)}"/>`;
   }
 
-  function outsideJawSurface(tag, shape, bevels, clipId) {
-    if (!bevels) return `<${tag} class="ln" fill="${SIDE_JAW_FILL}" ${shape}/>`;
+  function outsideJawSurface(tag, shape, bevels, clipId, fill = bevels ? 'url(#outsideJawShade)' : SIDE_JAW_FILL) {
+    if (!bevels) return `<${tag} class="ln" fill="${fill}" ${shape}/>`;
     // Keep the bands inside the notches and paint the silhouette stroke last.
-    return `<${tag} fill="url(#outsideJawShade)" ${shape}/>` +
+    return `<${tag} fill="${fill}" ${shape}/>` +
       `<defs><clipPath id="${clipId}"><${tag} ${shape}/></clipPath></defs>` +
       `<g clip-path="url(#${clipId})">${bevels}</g><${tag} class="ln nofill" ${shape}/>`;
   }
@@ -331,22 +332,32 @@
     const shape = `d="${roundedPath(P, [1, 2, 3, 4, 7, 8, 9, 10], 0.25 * nd)}"`;
     const c = g.tipChamfer;
     const bevels = j.rev ? [-1, 1].map((sign) => tipChamferBand(xb, j.steps[0].h, sign * (hw - c), sign * hw)).join('') : '';
-    let s = `<rect class="slotin" x="${xb}" y="${-hw}" width="${-xb}" height="${g.w}"/>`;
-    // The end-on jaw has no visible radial travel here; an upward drag opens it.
-    s += `<g class="jaw" data-axis="y" data-factor="-1" data-end-on>${outsideJawSurface('path', shape, bevels, 'outsideCenterClip')}`;
-    s += `<line class="thin" stroke-opacity=".7" x1="${x0 + 0.17 * sd}" y1="${-hw}" x2="${x0 + 0.17 * sd}" y2="${hw}"/>`;
-    // A step edge behind another step is visible only beyond the nearer step's extent.
-    let visibleExtent = 0;
+    let lines = `<line class="thin" stroke-opacity=".7" x1="${x0 + 0.17 * sd}" y1="${-hw}" x2="${x0 + 0.17 * sd}" y2="${hw}"/>`;
+    let visibleExtent = xb;
+    let stops = '';
     let edits = '';
+    const offset = (x) => (x - xb) / (xT - xb);
+    // A farther face is visible only beyond the nearer face's extent.
     for (const step of nearToFar) {
       const { h } = step;
       if (h <= visibleExtent) continue;
-      edits += stepEdge('outside-center', j.steps.indexOf(step), 'h', 'x', 1, [h, -hw], [h, hw]);
+      const index = j.steps.indexOf(step);
+      if (!j.rev) {
+        // Hard stops share the existing edges, so shading does not add strokes.
+        const color = END_ON_STEP_FILLS[index];
+        stops += `<stop offset="${offset(visibleExtent)}" stop-color="${color}"/><stop offset="${offset(h)}" stop-color="${color}"/>`;
+      }
+      edits += stepEdge('outside-center', index, 'h', 'x', 1, [h, -hw], [h, hw]);
       if (h >= xT) break; // The silhouette already draws this edge.
       visibleExtent = h;
-      s += `<line class="ln" x1="${h}" y1="${-hw}" x2="${h}" y2="${hw}"/>`;
+      lines += `<line class="ln" x1="${h}" y1="${-hw}" x2="${h}" y2="${hw}"/>`;
     }
-    return `${s}</g>${edits}`;
+    const shade = stops && `<defs><linearGradient id="outsideCenterStepShade" gradientUnits="userSpaceOnUse" x1="${xb}" y1="0" x2="${xT}" y2="0">${stops}</linearGradient></defs>`;
+    const fill = shade ? 'url(#outsideCenterStepShade)' : undefined;
+    const surface = outsideJawSurface('path', shape, bevels, 'outsideCenterClip', fill);
+    // The end-on jaw has no visible radial travel here; an upward drag opens it.
+    return `<rect class="slotin" x="${xb}" y="${-hw}" width="${-xb}" height="${g.w}"/>${shade}` +
+      `<g class="jaw" data-axis="y" data-factor="-1" data-end-on>${surface}${lines}</g>${edits}`;
   }
 
   function renderOutside(j, g) {
