@@ -63,7 +63,6 @@
     svg .dt { fill: var(--dim); paint-order: stroke; stroke: var(--panel); stroke-linejoin: round; pointer-events: none; }
     svg .dt.accent { fill: var(--accent); }
     svg .grip { stroke: var(--accent); stroke-width: 1.2; stroke-dasharray: 6 4; fill: none; pointer-events: none; }
-    svg .grip:is(.is-hovered, .is-active) { stroke: #fff; stroke-width: 2.8; filter: drop-shadow(0 0 .75px var(--ink)); }
     svg .nofill { fill: none; }
     svg .hid.np { pointer-events: none; }
     svg .slotin { fill: #7d8996; }
@@ -195,7 +194,7 @@
             <option value="2">قفل روی پلهٔ ۳</option>
           </select>
         </div>
-        <p class="body-hint" id="gripHint">در نمای روبه‌رو، خط‌چین قرمز زیر نشانگر سفید می‌شود. با هر کلیک یا لمس روی خود خط، دایره به‌ترتیب روی پلهٔ ۲، پلهٔ ۳ و دوباره در حالت آزاد قرار می‌گیرد.</p>
+        <p class="body-hint" id="gripHint">روی سطح پلهٔ ۲ یا ۳ کلیک کنید تا دایرهٔ قرمز به لبهٔ رو‌به‌مرکز آن قفل شود. کلیک دوباره یا کلیک روی پلهٔ ۱ قفل را آزاد می‌کند.</p>
       </div>
 
       <dl class="readouts" aria-live="polite">
@@ -210,6 +209,6 @@
       </div>
     </section>
   </main>
-  <script src="./app.js?v=29"></script>
+  <script src="./app.js?v=30"></script>
 </body>
 </html>
