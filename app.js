@@ -141,7 +141,8 @@
   }
 
   function dimensionEdge(id, key, axis, factor, shape, attrs, index) {
-    const active = diagramDrag?.id === id ? ' is-active' : '';
+    const drag = diagramDrag;
+    const active = drag && drag.id === id && (!drag.grip || drag.moved) ? ' is-active' : '';
     const step = index === undefined ? '' : ` data-i="${index}"`;
     return `<g class="dimension-edge${active}" data-edge="${id}" data-k="${key}" data-axis="${axis}" data-factor="${factor}"${step} aria-hidden="true">` +
       `<${shape} class="dimension-highlight" ${attrs}/><${shape} class="dimension-hit" ${attrs}/></g>`;
@@ -331,7 +332,7 @@
     const bevels = j.rev ? [-1, 1].map((sign) => tipChamferBand(xb, j.steps[0].h, sign * (hw - c), sign * hw)).join('') : '';
     let s = `<rect class="slotin" x="${xb}" y="${-hw}" width="${-xb}" height="${g.w}"/>`;
     // The end-on jaw has no visible radial travel here; an upward drag opens it.
-    s += `<g class="jaw" data-axis="y" data-factor="-1" data-end-on>${outsideJawSurface('path', shape, bevels, 'outsideCenterClip')}`;
+    s += `<g class="jaw" data-axis="y" data-factor="-1">${outsideJawSurface('path', shape, bevels, 'outsideCenterClip')}`;
     s += `<line class="thin" stroke-opacity=".7" x1="${x0 + 0.17 * sd}" y1="${-hw}" x2="${x0 + 0.17 * sd}" y2="${hw}"/>`;
     // A step edge behind another step is visible only beyond the nearer step's extent.
     let visibleExtent = 0;
@@ -490,22 +491,16 @@
     return transform ? new DOMPoint(event.clientX, event.clientY).matrixTransform(transform.inverse()) : null;
   }
 
-  function stepAtPoint(target, event, jaw) {
-    const p = diagramPoint(target, event);
-    if (!p) return null;
-    const ordered = segments(jaw);
-    if (target.hasAttribute('data-end-on')) {
-      if (p.x < 0) return null; // A click on the shank does not select a step.
-      const visible = [...ordered].reverse().find((step) => p.x <= step.h);
-      return visible ? jaw.steps.indexOf(visible) : null;
-    }
-    let edge = jaw.p;
-    const radial = Math.abs(p.y);
-    for (const step of ordered) {
-      edge += step.l;
-      if (radial <= edge) return jaw.steps.indexOf(step);
-    }
-    return jaw.steps.indexOf(ordered[ordered.length - 1]);
+  function gripTarget(svg, event) {
+    const grip = svg.querySelector('.grip');
+    const transform = grip?.getScreenCTM();
+    if (!transform) return null;
+    const p = new DOMPoint(event.clientX, event.clientY).matrixTransform(transform.inverse());
+    const r = grip.r.baseVal.value;
+    const scale = Math.hypot(transform.a, transform.b);
+    // Use a narrow stroke hit area, even when the opening is almost closed.
+    const tolerance = Math.min(event.pointerType === 'touch' ? 6 : 3, r * scale / 2);
+    return Math.abs(Math.hypot(p.x, p.y) - r) * scale <= tolerance ? grip : null;
   }
 
   function diagramTarget(svg, event, top = event.target) {
@@ -548,7 +543,7 @@
     return edge;
   }
 
-  function dragSettings(target, event) {
+  function dragSettings(target) {
     const { edge: id, i, k: key, axis, factor } = target.dataset;
     const g = geometry(state.body);
     if (target.classList.contains('jaw')) {
@@ -557,7 +552,6 @@
       const max = pMax(jaw, g);
       return {
         axis, factor: +factor, min, initial: jaw.p, increment: POS_INCREMENT * g.jawScale,
-        tapStep: stepAtPoint(target, event, jaw),
         apply: (value) => setPos(clamp(value, min, max), g),
       };
     }
@@ -576,7 +570,7 @@
     if (!diagramDrag) return;
     const { svg, pointerId } = diagramDrag;
     diagramDrag = null;
-    svg.querySelector('.dimension-edge.is-active')?.classList.remove('is-active');
+    svg.querySelector('.dimension-edge.is-active, .grip.is-active')?.classList.remove('is-active');
     svg.style.cursor = '';
     if (svg.hasPointerCapture(pointerId)) svg.releasePointerCapture(pointerId);
   }
@@ -588,6 +582,7 @@
       return axis === 'radius' ? Math.hypot(p.x, p.y) : p[axis];
     };
     const cursor = (target, active = false) => {
+      if (target.classList.contains('grip')) return 'pointer';
       const { axis } = target.dataset;
       if (axis === 'radius' || target.classList.contains('jaw')) return active ? 'grabbing' : 'grab';
       return axis === 'x' ? 'ew-resize' : 'ns-resize';
@@ -598,16 +593,25 @@
       if (hovered === target) return;
       hovered?.classList.remove('is-hovered');
       hovered = target;
-      if (target?.classList.contains('dimension-edge')) target.classList.add('is-hovered');
+      if (target?.matches('.dimension-edge, .grip')) target.classList.add('is-hovered');
       svg.style.cursor = target ? cursor(target) : '';
     };
+    const hoverAt = (event, top = event.target) => {
+      setHover(svg.contains(top) ? gripTarget(svg, event) || diagramTarget(svg, event, top) : null);
+    };
     const moveDrag = (event) => {
-      const { axis, factor, start, initial, min, increment, apply, tapStep, pressX, pressY } = diagramDrag;
-      if (tapStep !== undefined && !diagramDrag.moved) {
+      const { axis, factor, start, initial, min, increment, apply, grip, target, pressX, pressY } = diagramDrag;
+      if (!diagramDrag.moved && (grip || target.classList.contains('jaw'))) {
         const slop = event.pointerType === 'touch' ? 6 : 4;
         if (Math.hypot(event.clientX - pressX, event.clientY - pressY) < slop) return;
         diagramDrag.moved = true;
+        if (grip) {
+          grip.classList.remove('is-active');
+          target?.classList.add('is-active');
+          svg.style.cursor = target ? cursor(target, true) : '';
+        }
       }
+      if (!apply) return;
       const delta = (coordinate(event, axis) - start) * factor;
       const ticks = Math.round((initial + delta - min) / increment);
       apply(Math.abs(delta) < increment / 2 ? initial : min + ticks * increment);
@@ -615,28 +619,30 @@
 
     svg.addEventListener('pointermove', (event) => {
       if (ownsDrag(event)) moveDrag(event);
-      else if (!diagramDrag && event.pointerType !== 'touch') {
-        setHover(diagramTarget(svg, event));
-      }
+      else if (!diagramDrag && event.pointerType !== 'touch') hoverAt(event);
     });
     svg.addEventListener('pointerleave', () => { if (!diagramDrag) setHover(null); });
     svg.addEventListener('pointerdown', (event) => {
       if (!event.isPrimary || event.button !== 0 || diagramDrag) return;
-      const target = diagramTarget(svg, event);
-      if (!target) return;
-      const settings = dragSettings(target, event);
-      const start = coordinate(event, settings.axis);
+      const grip = gripTarget(svg, event);
+      const behind = diagramTarget(svg, event);
+      // Clicking the dashed circle changes its reference. Dragging can still edit a coincident dimension edge.
+      const target = grip && !behind?.classList.contains('dimension-edge') ? null : behind;
+      const handle = grip || target;
+      if (!handle) return;
+      const settings = target ? dragSettings(target) : {};
+      const start = target ? coordinate(event, settings.axis) : 0;
       if (!Number.isFinite(start)) return;
       stopAnimation();
       setHover(null);
       // Capture on the mounted SVG, not on the face or edge replaced by rendering.
       svg.setPointerCapture(event.pointerId);
       diagramDrag = {
-        ...settings, svg, pointerId: event.pointerId, start,
+        ...settings, svg, grip, target, pointerId: event.pointerId, start,
         pressX: event.clientX, pressY: event.clientY, moved: false,
       };
-      if (settings.id) target.classList.add('is-active');
-      svg.style.cursor = cursor(target, true);
+      if (grip || settings.id) handle.classList.add('is-active');
+      svg.style.cursor = cursor(handle, true);
       event.preventDefault();
     });
     // Some browsers ignore touch-action on SVG strokes; keep panning off only during a drag.
@@ -646,10 +652,13 @@
     svg.addEventListener('pointerup', (event) => {
       if (!ownsDrag(event)) return;
       moveDrag(event);
-      const { tapStep, moved } = diagramDrag;
+      const { grip, moved } = diagramDrag;
+      const touch = event.pointerType === 'touch';
+      const top = touch ? null : document.elementFromPoint(event.clientX, event.clientY);
+      const activate = grip && !moved && (touch || (svg.contains(top) && gripTarget(svg, event)));
       endDiagramDrag();
-      if (tapStep != null && !moved) setGripStep(tapStep === state.gripStep ? null : tapStep);
-      if (event.pointerType !== 'touch') setHover(diagramTarget(svg, event, document.elementFromPoint(event.clientX, event.clientY)));
+      if (activate) setGripStep(state.gripStep === 2 ? null : (state.gripStep ?? 0) + 1);
+      if (!touch) hoverAt(event, activate ? document.elementFromPoint(event.clientX, event.clientY) : top);
     });
     const cancelDrag = (event) => { if (ownsDrag(event)) endDiagramDrag(); };
     svg.addEventListener('pointercancel', cancelDrag);
