@@ -109,6 +109,7 @@
 
   // All four jaws share one profile in reference units so resizing never rounds away edits.
   const state = { body: defaultBody(), jawAtRef: defaultReferenceJaw(), dims: true };
+  let stepDrag = null;
 
   const jawLen = (j) => j.steps.reduce((s, x) => s + x.l, 0);
   const pMin = (j, g) => (j.rev ? g.w / 2 : g.w / 2 - g.tipChamfer);
@@ -126,31 +127,43 @@
       `<text x="${x}" y="${y}" text-anchor="middle" dominant-baseline="central" font-size="${0.044 * g.D}">${k + 1}</text></g>`;
   }
 
+  function stepEdge(scope, index, key, axis, direction, [x1, y1], [x2, y2]) {
+    if (x1 === x2 && y1 === y2) return '';
+    const id = `${scope}-${key}${index}`;
+    const active = stepDrag?.id === id ? ' is-active' : '';
+    const line = `x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"`;
+    return `<g class="step-edge${active}" data-edge="${id}" data-i="${index}" data-k="${key}" data-axis="${axis}" data-dir="${direction}" aria-hidden="true">` +
+      `<line class="step-highlight" ${line}/><line class="step-hit" ${line}/></g>`;
+  }
+
   function frontJawShape(j, g) {
     const w = g.w;
     const c = g.tipChamfer;
     const th = w / 2 - c;
     let u = j.p;
-    let out = '';
+    let outline = '';
+    const edges = [];
     segments(j).forEach((s) => {
       const u0 = u;
       const u1 = u + s.l;
       u = u1;
+      const tip = s === j.steps[0];
       let P;
-      if (s === j.steps[0] && !j.rev) {
+      if (tip && !j.rev) {
         P = [[-w / 2, u1], [w / 2, u1], [w / 2, u0 + c], [th, u0], [-th, u0], [-w / 2, u0 + c]];
-      } else if (s === j.steps[0]) {
+      } else if (tip) {
         P = [[-w / 2, u0], [w / 2, u0], [w / 2, u1 - c], [th, u1], [-th, u1], [-w / 2, u1 - c]];
       } else {
         P = [[-w / 2, u0], [w / 2, u0], [w / 2, u1], [-w / 2, u1]];
       }
-      out += `<polygon class="ln" fill="${shade(s.h, g)}" points="${pts(P.map(([v, r]) => [v, -r]))}"/>`;
-      if (s === j.steps[0]) {
+      outline += `<polygon class="ln" fill="${shade(s.h, g)}" points="${pts(P.map(([v, r]) => [v, -r]))}"/>`;
+      if (tip) {
         const uc = j.rev ? u1 - c : u0 + c;
-        out += `<line class="cham" x1="${-w / 2}" y1="${-uc}" x2="${w / 2}" y2="${-uc}"/>`;
+        outline += `<line class="cham" x1="${-w / 2}" y1="${-uc}" x2="${w / 2}" y2="${-uc}"/>`;
       }
+      edges.push({ index: j.steps.indexOf(s), y: -u1, half: tip && j.rev ? th : w / 2 });
     });
-    return out;
+    return { outline, edges };
   }
 
   function initDrawingFrames() {
@@ -192,9 +205,15 @@
       `<line class="hid np" x1="${sg * sock}" y1="${-R - prot}" x2="${sg * sock}" y2="${-R + 0.03 * D}"/>`).join(''));
     s += `<line class="ctr" x1="${-0.56 * D}" y1="0" x2="${0.56 * D}" y2="0"/><line class="ctr" x1="0" y1="${-0.56 * D}" x2="0" y2="${0.56 * D}"/>`;
 
-    const jaw = frontJawShape(j, g);
+    const { outline, edges } = frontJawShape(j, g);
     for (let k = 0; k < JAW_COUNT; k++) {
-      s += `<g class="jaw" transform="rotate(${k * 360 / JAW_COUNT})">${jaw}</g>`;
+      const rotation = `rotate(${k * 360 / JAW_COUNT})`;
+      const axis = k % 2 === 0 ? 'y' : 'x';
+      const direction = k === 1 || k === 2 ? 1 : -1;
+      const edits = edges.map(({ index, y, half }) =>
+        stepEdge(`front-${k}`, index, 'l', axis, direction, [-half, y], [half, y])).join('');
+      s += `<g class="jaw" transform="${rotation}">${outline}</g>`;
+      s += `<g class="step-edges" transform="${rotation}">${edits}</g>`;
     }
 
     s += `<circle class="grip" r="${j.p}"/>`;
@@ -233,11 +252,21 @@
     const dt = 0.016 * g.D;
     const ss = segments(j);
     const P = [[x0, j.p], [ss[0].h, j.p]];
+    const R = g.D / 2;
+    const scope = sign < 0 ? 'outside-top' : 'outside-bottom';
     let u = j.p;
+    let edits = '';
     ss.forEach((seg, i) => {
+      const stepIndex = j.steps.indexOf(seg);
+      const start = sign * u;
       u += seg.l;
+      const end = sign * u;
+      const next = ss[i + 1];
       P.push([seg.h, u]);
-      if (ss[i + 1]) P.push([ss[i + 1].h, u]);
+      if (next) P.push([next.h, u]);
+      // Drag the face axially for height, or its outer radial edge for length.
+      edits += stepEdge(scope, stepIndex, 'h', 'x', 1, [seg.h, start], [seg.h, end]);
+      edits += stepEdge(scope, stepIndex, 'l', 'y', sign, [seg.h, end], [next?.h ?? (u > R ? xt : 0), end]);
     });
     P.push([xt, u], [xt, u - dt], [x0, u - dt]);
     const shape = `points="${pts(P.map(([x, r]) => [x, sign * r]))}"`;
@@ -248,10 +277,9 @@
     const bevel = tipChamferBand(x0, h, rc, bevelEdge) +
       `<line class="thin" x1="${x0}" y1="${rc}" x2="${h}" y2="${rc}"/>`;
     const clipId = sign < 0 ? 'outsideTopClip' : 'outsideBottomClip';
-    const jaw = `<g class="jaw">${outsideJawSurface('polygon', shape, bevel, clipId)}</g>`;
+    const jaw = `<g class="jaw">${outsideJawSurface('polygon', shape, bevel, clipId)}</g>${edits}`;
 
     // Draw hidden guide grooves over the body only where the jaws protrude.
-    const R = g.D / 2;
     let over = '';
     if (u > R) {
       [x0 + 0.34 * sd, x0 + 0.8 * sd].forEach((x) => {
@@ -269,8 +297,8 @@
     const xn1 = x0 + 0.8 * sd;
     const hw = g.w / 2;
     const nd = 0.17 * g.w;
-    const hs = segments(j).map((step) => step.h).reverse(); // Outermost step faces the viewer.
-    const xT = Math.max(...hs);
+    const nearToFar = [...segments(j)].reverse(); // Outermost step faces the viewer.
+    const xT = Math.max(...nearToFar.map((step) => step.h));
     const P = [
       [xb, -hw], [xn0, -hw], [xn0, -hw + nd], [xn1, -hw + nd], [xn1, -hw], [xT, -hw],
       [xT, hw], [xn1, hw], [xn1, hw - nd], [xn0, hw - nd], [xn0, hw], [xb, hw],
@@ -283,13 +311,16 @@
     s += `<line class="thin" stroke-opacity=".7" x1="${x0 + 0.17 * sd}" y1="${-hw}" x2="${x0 + 0.17 * sd}" y2="${hw}"/>`;
     // A step edge behind another step is visible only beyond the nearer step's extent.
     let visibleExtent = 0;
-    for (const h of hs) {
-      if (h >= xT) break;
+    let edits = '';
+    for (const step of nearToFar) {
+      const { h } = step;
       if (h <= visibleExtent) continue;
+      edits += stepEdge('outside-center', j.steps.indexOf(step), 'h', 'x', 1, [h, -hw], [h, hw]);
+      if (h >= xT) break; // The silhouette already draws this edge.
       visibleExtent = h;
       s += `<line class="ln" x1="${h}" y1="${-hw}" x2="${h}" y2="${hw}"/>`;
     }
-    return `${s}</g>`;
+    return `${s}</g>${edits}`;
   }
 
   function renderOutside(j, g) {
@@ -386,6 +417,109 @@
     syncControls(j, g);
   }
 
+  function setJawStep(index, key, value, g) {
+    const step = state.jawAtRef.steps[index];
+    const limits = jawStepLimits(key, index);
+    if (!step || !limits || !Number.isFinite(value)) return;
+    const next = clamp(value, limits.min, limits.max);
+    if (next === step[key]) return;
+    step[key] = next;
+    render(g);
+  }
+
+  function nearestStepEdge(svg, event) {
+    let edge = null;
+    let nearest = Infinity;
+    for (const hit of document.elementsFromPoint(event.clientX, event.clientY)) {
+      // Do not pick edges painted behind the body or another jaw.
+      if (!hit.classList.contains('step-hit') || !svg.contains(hit)) break;
+      const transform = hit.getScreenCTM();
+      if (!transform) continue;
+      const candidate = hit.parentElement;
+      const start = new DOMPoint(hit.x1.baseVal.value, hit.y1.baseVal.value).matrixTransform(transform);
+      const distance = Math.abs(candidate.dataset.axis === 'x' ? event.clientX - start.x : event.clientY - start.y);
+      if (distance < nearest) {
+        nearest = distance;
+        edge = candidate;
+      }
+    }
+    return edge;
+  }
+
+  function endStepDrag() {
+    if (!stepDrag) return;
+    const { svg, pointerId } = stepDrag;
+    stepDrag = null;
+    svg.querySelector('.step-edge.is-active')?.classList.remove('is-active');
+    svg.style.cursor = '';
+    if (svg.hasPointerCapture(pointerId)) svg.releasePointerCapture(pointerId);
+  }
+
+  function bindStepEditing(svg, stopAnimation) {
+    const coordinate = (event, axis) => {
+      const transform = svg.getScreenCTM();
+      return transform ? new DOMPoint(event.clientX, event.clientY).matrixTransform(transform.inverse())[axis] : NaN;
+    };
+    const cursor = (edge) => edge.dataset.axis === 'x' ? 'ew-resize' : 'ns-resize';
+    const ownsDrag = (event) => stepDrag?.svg === svg && stepDrag.pointerId === event.pointerId;
+    let hovered = null;
+    const setHover = (edge) => {
+      if (hovered === edge) return;
+      hovered?.classList.remove('is-hovered');
+      hovered = edge;
+      hovered?.classList.add('is-hovered');
+      svg.style.cursor = edge ? cursor(edge) : '';
+    };
+    const moveStep = (event) => {
+      const { index, key, axis, direction, start, initial, g } = stepDrag;
+      const delta = (coordinate(event, axis) - start) * direction / g.jawScale;
+      const { min } = jawStepLimits(key, index);
+      const ticks = Math.round((initial + delta - min) / JAW_STEP_INCREMENT);
+      setJawStep(index, key, min + ticks * JAW_STEP_INCREMENT, g);
+    };
+
+    svg.addEventListener('pointermove', (event) => {
+      if (ownsDrag(event)) moveStep(event);
+      else if (!stepDrag && event.pointerType !== 'touch') {
+        setHover(event.target.classList.contains('step-hit') ? nearestStepEdge(svg, event) : null);
+      }
+    });
+    svg.addEventListener('pointerleave', () => { if (!stepDrag) setHover(null); });
+    svg.addEventListener('pointerdown', (event) => {
+      if (!event.isPrimary || event.button !== 0 || stepDrag || !event.target.classList.contains('step-hit')) return;
+      const edge = nearestStepEdge(svg, event);
+      if (!edge) return;
+      const { edge: id, i, k: key, axis, dir } = edge.dataset;
+      const start = coordinate(event, axis);
+      if (!Number.isFinite(start)) return;
+      const index = +i;
+      stopAnimation();
+      setHover(null);
+      // The SVG root stays mounted even when its edges are rebuilt during a drag.
+      svg.setPointerCapture(event.pointerId);
+      stepDrag = {
+        svg, id, pointerId: event.pointerId, index, key, axis, start,
+        direction: +dir, initial: state.jawAtRef.steps[index][key], g: geometry(state.body),
+      };
+      edge.classList.add('is-active');
+      svg.style.cursor = cursor(edge);
+      event.preventDefault();
+    });
+    // Some browsers ignore touch-action on SVG strokes; keep panning off only during a drag.
+    svg.addEventListener('touchstart', (event) => {
+      if (stepDrag?.svg === svg && event.cancelable) event.preventDefault();
+    }, { passive: false });
+    svg.addEventListener('pointerup', (event) => {
+      if (!ownsDrag(event)) return;
+      moveStep(event);
+      endStepDrag();
+      if (event.pointerType !== 'touch') setHover(nearestStepEdge(svg, event));
+    });
+    const cancelDrag = (event) => { if (ownsDrag(event)) endStepDrag(); };
+    svg.addEventListener('pointercancel', cancelDrag);
+    svg.addEventListener('lostpointercapture', cancelDrag);
+  }
+
   function init() {
     renderSpecs();
     initDrawingFrames();
@@ -411,8 +545,16 @@
       render(g);
     };
     let anim = 0;
+    const stopAnimation = () => cancelAnimationFrame(anim);
+    const interruptMotion = () => {
+      stopAnimation();
+      endStepDrag();
+    };
+    bindStepEditing($('#front'), stopAnimation);
+    bindStepEditing($('#outside'), stopAnimation);
+
     const updateBody = () => {
-      cancelAnimationFrame(anim);
+      interruptMotion();
       const g = geometry(state.body);
       syncBodyControls(g);
       render(g);
@@ -435,7 +577,7 @@
 
     const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
     const animateMove = (direction) => {
-      cancelAnimationFrame(anim);
+      interruptMotion();
       const g = geometry(state.body);
       const j = scaleJaw(state.jawAtRef, g.jawScale);
       const from = j.p;
@@ -450,12 +592,12 @@
       };
       anim = requestAnimationFrame(tick);
     };
-    $('#pos').addEventListener('input', (ev) => { cancelAnimationFrame(anim); setPos(+ev.target.value); });
+    $('#pos').addEventListener('input', (ev) => { interruptMotion(); setPos(+ev.target.value); });
     $('#btnClose').addEventListener('click', () => animateMove(-1));
     $('#btnOpen').addEventListener('click', () => animateMove(1));
 
     $('#rev').addEventListener('click', () => {
-      cancelAnimationFrame(anim);
+      interruptMotion();
       state.jawAtRef.rev = !state.jawAtRef.rev;
       render();
     });
@@ -463,13 +605,10 @@
     $('#steps').addEventListener('input', (ev) => {
       const el = ev.target;
       const { k, i } = el.dataset;
-      const index = +i;
-      const limits = jawStepLimits(k, index);
-      if (!limits || !Number.isFinite(el.valueAsNumber)) return;
-      cancelAnimationFrame(anim);
+      if (!Number.isFinite(el.valueAsNumber)) return;
+      interruptMotion();
       const g = geometry(state.body);
-      state.jawAtRef.steps[index][k] = clamp(el.valueAsNumber / g.jawScale, limits.min, limits.max);
-      render(g);
+      setJawStep(+i, k, el.valueAsNumber / g.jawScale, g);
     });
 
     $('#dims').addEventListener('change', (ev) => {
@@ -478,7 +617,7 @@
     });
 
     $('#reset').addEventListener('click', () => {
-      cancelAnimationFrame(anim);
+      interruptMotion();
       state.jawAtRef = defaultReferenceJaw();
       render();
     });
