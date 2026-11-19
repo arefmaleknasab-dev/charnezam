@@ -684,7 +684,7 @@
       moveDrag(event);
       const { tapStep, moved } = diagramDrag;
       endDiagramDrag();
-      if (tapStep != null && !moved) setGripStep(tapStep === state.gripStep ? null : tapStep);
+      if (tapStep != null && !moved) setGripStep(tapStep);
       if (event.pointerType !== 'touch') setHover(diagramTarget(svg, event, document.elementFromPoint(event.clientX, event.clientY)));
     });
     const cancelDrag = (event) => { if (ownsDrag(event)) endDiagramDrag(); };
