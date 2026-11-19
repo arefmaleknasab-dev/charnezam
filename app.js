@@ -209,19 +209,6 @@
       const a = (k * 2 * Math.PI) / JAW_COUNT;
       s += badge(Math.sin(a) * r, -Math.cos(a) * r, k, g);
     }
-
-    if (state.dims) {
-      // Point to the lower-left mounting-hole position, clear of both pinions.
-      const a = ((15 + ((g.z - 1) * 360) / g.z) * Math.PI) / 180;
-      const dx = Math.sin(a);
-      const dy = -Math.cos(a);
-      const r0 = g.D2 / 2;
-      const r1 = R + 0.09 * D;
-      const x = dx * r1;
-      const y = dy * r1;
-      s += `<line class="dim" x1="${dx * r0}" y1="${dy * r0}" x2="${x}" y2="${y}"/>`;
-      s += `<text class="dt" stroke-width="${0.014 * D}" x="${x - 0.015 * D}" y="${y + 0.02 * D}" font-size="${fs}" text-anchor="end">${g.z}-M${g.d}</text>`;
-    }
     svg.innerHTML = s;
   }
 
