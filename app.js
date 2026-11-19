@@ -370,6 +370,19 @@
       `<g class="jaw" data-axis="y" data-factor="-1" data-end-on>${surface}${lines}</g>${edits}`;
   }
 
+  function outsideBodyGradient(R) {
+    const intervals = 24;
+    const stops = Array.from({ length: intervals + 1 }, (_, i) => {
+      const offset = i / intervals;
+      const y = 2 * offset - 1;
+      // The projected cylinder is closest at its center and recedes toward both rims.
+      const depth = Math.sqrt(1 - y * y);
+      return `<stop offset="${offset}" stop-color="${steelShade(58 + 32 * depth)}"/>`;
+    });
+    // Share one coordinate system so the body and jaw recesses match at every height.
+    return `<linearGradient id="outsideBodyShade" gradientUnits="userSpaceOnUse" x1="0" y1="${-R}" x2="0" y2="${R}">${stops.join('')}</linearGradient>`;
+  }
+
   function renderOutside(j, g) {
     const { D, H1 } = g;
     const R = D / 2;
@@ -378,7 +391,7 @@
 
     const top = outsideJawSide(j, -1, g);
     const bottom = outsideJawSide(j, 1, g);
-    let s = `<defs><linearGradient id="outsideJawShade" x1="0%" y1="0%" x2="100%" y2="100%">` +
+    let s = `<defs>${outsideBodyGradient(R)}<linearGradient id="outsideJawShade" x1="0%" y1="0%" x2="100%" y2="100%">` +
       `<stop offset="0" stop-color="#c5cfd8"/><stop offset="1" stop-color="#a2b0be"/></linearGradient></defs>`;
     s += top.jaw + bottom.jaw;
     s += `<rect class="ln body" x="${rearX}" y="${-R}" width="${H1}" height="${D}"/>`;
