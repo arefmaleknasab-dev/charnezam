@@ -29,6 +29,9 @@
     return key === 'l' && index === 0 ? { ...limits, min: Math.max(limits.min, MIN_TIP_STEP_LENGTH) } : limits;
   }
   const JAW_COUNT = 4;
+  const MIN_JAW_ENGAGEMENT = 0.5;
+  const JAW_BADGE_OFFSET = 0.06;
+  const JAW_BADGE_RADIUS = 0.036;
   const SIDE_JAW_FILL = 'hsl(210 16% 74%)';
 
   const FA_DIGITS = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
@@ -109,7 +112,8 @@
 
   const jawLen = (j) => j.steps.reduce((s, x) => s + x.l, 0);
   const pMin = (j, g) => (j.rev ? g.w / 2 : g.w / 2 - g.tipChamfer);
-  const pMax = (j, g) => Math.max(pMin(j, g), g.D / 2 - 0.65 * jawLen(j));
+  // Keep half of each jaw's radial length within the body at maximum opening.
+  const pMax = (j, g) => Math.max(pMin(j, g), g.D / 2 - MIN_JAW_ENGAGEMENT * jawLen(j));
   const segments = (j) => (j.rev ? [...j.steps].reverse() : j.steps);
 
   function shade(h, g) {
@@ -118,7 +122,7 @@
   }
 
   function badge(x, y, k, g) {
-    return `<g class="badge"><circle class="thin" cx="${x}" cy="${y}" r="${0.036 * g.D}"/>` +
+    return `<g class="badge"><circle class="thin" cx="${x}" cy="${y}" r="${JAW_BADGE_RADIUS * g.D}"/>` +
       `<text x="${x}" y="${y}" text-anchor="middle" dominant-baseline="central" font-size="${0.044 * g.D}">${k + 1}</text></g>`;
   }
 
@@ -152,15 +156,20 @@
   function initDrawingFrames() {
     // Fit the largest supported dimensions once so resizing changes the visible size, not the zoom.
     const g = geometry({ D: BODY_LIMITS.D.max, H1: BODY_LIMITS.H1.max });
-    const y = -0.84 * g.D;
-    const height = 1.68 * g.D;
-    const frame = (svg, x, width) => {
+    const maxJawLength = JAW_REFERENCE.steps.length * JAW_STEP_LIMITS.l.max * g.jawScale;
+    const maxReach = g.D / 2 + (1 - MIN_JAW_ENGAGEMENT) * maxJawLength;
+    const frame = (svg, x, y, width, height) => {
       svg.setAttribute('viewBox', `${x} ${y} ${width} ${height}`);
       svg.style.aspectRatio = `${width} / ${height}`;
     };
-    frame($('#front'), -0.82 * g.D, 1.64 * g.D);
+    // Leave room for the badges even with the longest jaws opened to the limit.
+    const badgeReach = maxReach + (JAW_BADGE_OFFSET + JAW_BADGE_RADIUS) * g.D;
+    const frontX = badgeReach + 0.02 * g.D;
+    const frontY = badgeReach + 0.04 * g.D;
+    frame($('#front'), -frontX, -frontY, 2 * frontX, 2 * frontY);
     const pad = 0.06 * g.D;
-    frame($('#outside'), -g.H1 - pad, g.H1 + g.hMax + 2 * pad);
+    const sideY = maxReach + 0.04 * g.D;
+    frame($('#outside'), -g.H1 - pad, -sideY, g.H1 + g.hMax + 2 * pad, 2 * sideY);
   }
 
   function renderFront(j, g) {
@@ -197,10 +206,11 @@
     s += `<circle class="grip" r="${j.p}"/>`;
     if (state.dims) {
       const q = j.p * Math.SQRT1_2 + 0.02 * D;
-      s += `<text class="dt accent" stroke-width="${0.014 * D}" x="${-q}" y="${-q}" text-anchor="end" font-size="${fs}">Ø${fmt(2 * j.p)}</text>`;
+      // Keep the opening label clear of the upper-left pinion at maximum travel.
+      s += `<text class="dt accent" stroke-width="${0.014 * D}" x="${q}" y="${-q}" text-anchor="start" font-size="${fs}">Ø${fmt(2 * j.p)}</text>`;
     }
 
-    const r = Math.max(j.p + jawLen(j), R) + 0.06 * D;
+    const r = Math.max(j.p + jawLen(j), R) + JAW_BADGE_OFFSET * D;
     for (let k = 0; k < JAW_COUNT; k++) {
       const a = (k * 2 * Math.PI) / JAW_COUNT;
       s += badge(Math.sin(a) * r, -Math.cos(a) * r, k, g);
