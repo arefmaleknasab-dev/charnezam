@@ -16,6 +16,7 @@
     steps: [{ l: 17.5, h: 27 }, { l: 16.5, h: 18 }, { l: 16.5, h: 9 }],
   };
   const JAW_STEP_INCREMENT = 0.5;
+  const POS_INCREMENT = 0.1;
   const JAW_STEP_LIMITS = {
     l: { min: 6.5, max: 32 },
     h: { min: 2.5, max: 40.5 },
@@ -110,7 +111,7 @@
 
   // All four jaws share one profile in reference units so resizing never rounds away edits.
   const state = { body: defaultBody(), jawAtRef: defaultReferenceJaw(), dims: true };
-  let dimensionDrag = null;
+  let diagramDrag = null;
 
   const jawLen = (j) => j.steps.reduce((s, x) => s + x.l, 0);
   const pMin = (j, g) => (j.rev ? g.w / 2 : g.w / 2 - g.tipChamfer);
@@ -129,7 +130,7 @@
   }
 
   function dimensionEdge(id, key, axis, factor, shape, attrs, index) {
-    const active = dimensionDrag?.id === id ? ' is-active' : '';
+    const active = diagramDrag?.id === id ? ' is-active' : '';
     const step = index === undefined ? '' : ` data-i="${index}"`;
     return `<g class="dimension-edge${active}" data-edge="${id}" data-k="${key}" data-axis="${axis}" data-factor="${factor}"${step} aria-hidden="true">` +
       `<${shape} class="dimension-highlight" ${attrs}/><${shape} class="dimension-hit" ${attrs}/></g>`;
@@ -223,7 +224,7 @@
       const direction = k === 1 || k === 2 ? 1 : -1;
       const edits = edges.map(({ index, y, half }) =>
         stepEdge(`front-${k}`, index, 'l', axis, direction, [-half, y], [half, y])).join('');
-      s += `<g class="jaw" transform="${rotation}">${outline}</g>`;
+      s += `<g class="jaw" transform="${rotation}" data-axis="${axis}" data-factor="${direction}">${outline}</g>`;
       s += `<g class="step-edges" transform="${rotation}">${edits}</g>`;
     }
 
@@ -288,7 +289,7 @@
     const bevel = tipChamferBand(x0, h, rc, bevelEdge) +
       `<line class="thin" x1="${x0}" y1="${rc}" x2="${h}" y2="${rc}"/>`;
     const clipId = sign < 0 ? 'outsideTopClip' : 'outsideBottomClip';
-    const jaw = `<g class="jaw">${outsideJawSurface('polygon', shape, bevel, clipId)}</g>${edits}`;
+    const jaw = `<g class="jaw" data-axis="y" data-factor="${sign}">${outsideJawSurface('polygon', shape, bevel, clipId)}</g>${edits}`;
 
     // Draw hidden guide grooves over the body only where the jaws protrude.
     let over = '';
@@ -318,7 +319,8 @@
     const c = g.tipChamfer;
     const bevels = j.rev ? [-1, 1].map((sign) => tipChamferBand(xb, j.steps[0].h, sign * (hw - c), sign * hw)).join('') : '';
     let s = `<rect class="slotin" x="${xb}" y="${-hw}" width="${-xb}" height="${g.w}"/>`;
-    s += `<g class="jaw">${outsideJawSurface('path', shape, bevels, 'outsideCenterClip')}`;
+    // The end-on jaw has no visible radial travel here; an upward drag opens it.
+    s += `<g class="jaw" data-axis="y" data-factor="-1">${outsideJawSurface('path', shape, bevels, 'outsideCenterClip')}`;
     s += `<line class="thin" stroke-opacity=".7" x1="${x0 + 0.17 * sd}" y1="${-hw}" x2="${x0 + 0.17 * sd}" y2="${hw}"/>`;
     // A step edge behind another step is visible only beyond the nearer step's extent.
     let visibleExtent = 0;
@@ -394,7 +396,7 @@
     const pos = $('#pos');
     pos.min = String(pMin(j, g));
     pos.max = String(pMax(j, g));
-    pos.step = String(0.1 * g.jawScale);
+    pos.step = String(POS_INCREMENT * g.jawScale);
     pos.value = String(j.p);
     $('#posOut').textContent = `${fmt(j.p)} mm`;
 
@@ -447,6 +449,12 @@
     renderBody();
   }
 
+  function setPos(v, g = geometry(state.body)) {
+    if (!Number.isFinite(v) || v === state.jawAtRef.p * g.jawScale) return;
+    state.jawAtRef.p = v / g.jawScale;
+    render(g);
+  }
+
   function setJawStep(index, key, value, g) {
     const step = state.jawAtRef.steps[index];
     const limits = jawStepLimits(key, index);
@@ -457,12 +465,20 @@
     render(g);
   }
 
-  function nearestDimensionEdge(svg, event) {
+  function diagramTarget(svg, event, top = event.target) {
+    if (!top || !svg.contains(top)) return null;
+    if (!top.classList.contains('dimension-hit')) return top.closest('.jaw');
+
     let edge = null;
+    let face = null;
     let nearest = Infinity;
     for (const hit of document.elementsFromPoint(event.clientX, event.clientY)) {
-      // Do not pick edges painted behind another surface.
-      if (!hit.classList.contains('dimension-hit') || !svg.contains(hit)) break;
+      // Only consider edit strokes in front of the first visible surface.
+      if (!svg.contains(hit)) break;
+      if (!hit.classList.contains('dimension-hit')) {
+        face = hit.closest('.jaw');
+        break;
+      }
       const transform = hit.getScreenCTM();
       if (!transform) continue;
       const candidate = hit.parentElement;
@@ -480,90 +496,110 @@
         edge = candidate;
       }
     }
+    if (face) {
+      // Keep a usable face between handles even on a small or shortened jaw.
+      const m = svg.getScreenCTM();
+      const stepPixels = m ? Math.hypot(m.a, m.b) * JAW_STEP_LIMITS.l.min * state.body.D / JAW_REFERENCE.D : 0;
+      if (nearest > Math.min(4, stepPixels / 3)) return face;
+    }
     return edge;
   }
 
-  function endDimensionDrag() {
-    if (!dimensionDrag) return;
-    const { svg, pointerId } = dimensionDrag;
-    dimensionDrag = null;
+  function dragSettings(target) {
+    const { edge: id, i, k: key, axis, factor } = target.dataset;
+    const g = geometry(state.body);
+    if (target.classList.contains('jaw')) {
+      const jaw = scaleJaw(state.jawAtRef, g.jawScale);
+      const min = pMin(jaw, g);
+      const max = pMax(jaw, g);
+      return {
+        axis, factor: +factor, min, initial: jaw.p, increment: POS_INCREMENT * g.jawScale,
+        apply: (value) => setPos(clamp(value, min, max), g),
+      };
+    }
+    const isBody = i === undefined;
+    const index = +i;
+    const { min } = isBody ? BODY_LIMITS[key] : jawStepLimits(key, index);
+    return {
+      id, axis, min, factor: isBody ? +factor : +factor / g.jawScale,
+      initial: isBody ? state.body[key] : state.jawAtRef.steps[index][key],
+      increment: isBody ? BODY_INCREMENT : JAW_STEP_INCREMENT,
+      apply: isBody ? (value) => setBodyDimension(key, value) : (value) => setJawStep(index, key, value, g),
+    };
+  }
+
+  function endDiagramDrag() {
+    if (!diagramDrag) return;
+    const { svg, pointerId } = diagramDrag;
+    diagramDrag = null;
     svg.querySelector('.dimension-edge.is-active')?.classList.remove('is-active');
     svg.style.cursor = '';
     if (svg.hasPointerCapture(pointerId)) svg.releasePointerCapture(pointerId);
   }
 
-  function bindDimensionEditing(svg, stopAnimation) {
+  function bindDiagramEditing(svg, stopAnimation) {
     const coordinate = (event, axis) => {
       const transform = svg.getScreenCTM();
       if (!transform) return NaN;
       const p = new DOMPoint(event.clientX, event.clientY).matrixTransform(transform.inverse());
       return axis === 'radius' ? Math.hypot(p.x, p.y) : p[axis];
     };
-    const cursor = (edge, active = false) => {
-      const { axis } = edge.dataset;
-      if (axis === 'radius') return active ? 'grabbing' : 'grab';
+    const cursor = (target, active = false) => {
+      const { axis } = target.dataset;
+      if (axis === 'radius' || target.classList.contains('jaw')) return active ? 'grabbing' : 'grab';
       return axis === 'x' ? 'ew-resize' : 'ns-resize';
     };
-    const ownsDrag = (event) => dimensionDrag?.svg === svg && dimensionDrag.pointerId === event.pointerId;
+    const ownsDrag = (event) => diagramDrag?.svg === svg && diagramDrag.pointerId === event.pointerId;
     let hovered = null;
-    const setHover = (edge) => {
-      if (hovered === edge) return;
+    const setHover = (target) => {
+      if (hovered === target) return;
       hovered?.classList.remove('is-hovered');
-      hovered = edge;
-      hovered?.classList.add('is-hovered');
-      svg.style.cursor = edge ? cursor(edge) : '';
+      hovered = target;
+      if (target?.classList.contains('dimension-edge')) target.classList.add('is-hovered');
+      svg.style.cursor = target ? cursor(target) : '';
     };
-    const moveDimension = (event) => {
-      const { axis, factor, start, initial, min, increment, apply } = dimensionDrag;
+    const moveDrag = (event) => {
+      const { axis, factor, start, initial, min, increment, apply } = diagramDrag;
       const delta = (coordinate(event, axis) - start) * factor;
       const ticks = Math.round((initial + delta - min) / increment);
-      apply(min + ticks * increment);
+      // A click alone must not snap a jaw from its current position to a slider tick.
+      apply(Math.abs(delta) < increment / 2 ? initial : min + ticks * increment);
     };
 
     svg.addEventListener('pointermove', (event) => {
-      if (ownsDrag(event)) moveDimension(event);
-      else if (!dimensionDrag && event.pointerType !== 'touch') {
-        setHover(event.target.classList.contains('dimension-hit') ? nearestDimensionEdge(svg, event) : null);
+      if (ownsDrag(event)) moveDrag(event);
+      else if (!diagramDrag && event.pointerType !== 'touch') {
+        setHover(diagramTarget(svg, event));
       }
     });
-    svg.addEventListener('pointerleave', () => { if (!dimensionDrag) setHover(null); });
+    svg.addEventListener('pointerleave', () => { if (!diagramDrag) setHover(null); });
     svg.addEventListener('pointerdown', (event) => {
-      if (!event.isPrimary || event.button !== 0 || dimensionDrag || !event.target.classList.contains('dimension-hit')) return;
-      const edge = nearestDimensionEdge(svg, event);
-      if (!edge) return;
-      const { edge: id, i, k: key, axis, factor } = edge.dataset;
-      const start = coordinate(event, axis);
+      if (!event.isPrimary || event.button !== 0 || diagramDrag) return;
+      const target = diagramTarget(svg, event);
+      if (!target) return;
+      const settings = dragSettings(target);
+      const start = coordinate(event, settings.axis);
       if (!Number.isFinite(start)) return;
-      const isBody = i === undefined;
-      const index = +i;
-      const g = geometry(state.body);
-      const { min } = isBody ? BODY_LIMITS[key] : jawStepLimits(key, index);
       stopAnimation();
       setHover(null);
-      // The SVG root stays mounted even when its edges are rebuilt during a drag.
+      // Capture on the mounted SVG, not on the face or edge replaced by rendering.
       svg.setPointerCapture(event.pointerId);
-      dimensionDrag = {
-        svg, id, pointerId: event.pointerId, axis, start, min,
-        factor: isBody ? +factor : +factor / g.jawScale,
-        initial: isBody ? state.body[key] : state.jawAtRef.steps[index][key],
-        increment: isBody ? BODY_INCREMENT : JAW_STEP_INCREMENT,
-        apply: isBody ? (value) => setBodyDimension(key, value) : (value) => setJawStep(index, key, value, g),
-      };
-      edge.classList.add('is-active');
-      svg.style.cursor = cursor(edge, true);
+      diagramDrag = { ...settings, svg, pointerId: event.pointerId, start };
+      if (settings.id) target.classList.add('is-active');
+      svg.style.cursor = cursor(target, true);
       event.preventDefault();
     });
     // Some browsers ignore touch-action on SVG strokes; keep panning off only during a drag.
     svg.addEventListener('touchstart', (event) => {
-      if (dimensionDrag?.svg === svg && event.cancelable) event.preventDefault();
+      if (diagramDrag?.svg === svg && event.cancelable) event.preventDefault();
     }, { passive: false });
     svg.addEventListener('pointerup', (event) => {
       if (!ownsDrag(event)) return;
-      moveDimension(event);
-      endDimensionDrag();
-      if (event.pointerType !== 'touch') setHover(nearestDimensionEdge(svg, event));
+      moveDrag(event);
+      endDiagramDrag();
+      if (event.pointerType !== 'touch') setHover(diagramTarget(svg, event, document.elementFromPoint(event.clientX, event.clientY)));
     });
-    const cancelDrag = (event) => { if (ownsDrag(event)) endDimensionDrag(); };
+    const cancelDrag = (event) => { if (ownsDrag(event)) endDiagramDrag(); };
     svg.addEventListener('pointercancel', cancelDrag);
     svg.addEventListener('lostpointercapture', cancelDrag);
   }
@@ -588,18 +624,14 @@
         </div>
       </div>`).join('');
 
-    const setPos = (v, g = geometry(state.body)) => {
-      state.jawAtRef.p = v / g.jawScale;
-      render(g);
-    };
     let anim = 0;
     const stopAnimation = () => cancelAnimationFrame(anim);
     const interruptMotion = () => {
       stopAnimation();
-      endDimensionDrag();
+      endDiagramDrag();
     };
-    bindDimensionEditing($('#front'), stopAnimation);
-    bindDimensionEditing($('#outside'), stopAnimation);
+    bindDiagramEditing($('#front'), stopAnimation);
+    bindDiagramEditing($('#outside'), stopAnimation);
 
     for (const [key, { min, max }] of Object.entries(BODY_LIMITS)) {
       const input = $(`#body${key}`);

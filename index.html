@@ -60,12 +60,13 @@
     svg .hid { stroke: var(--muted); stroke-width: .9; stroke-dasharray: 5 4; }
     svg .ctr { stroke: var(--muted); stroke-width: .8; stroke-dasharray: 14 4 2 4; fill: none; }
     svg .cham { stroke: var(--ink); stroke-width: 1; stroke-dasharray: 4 3; vector-effect: non-scaling-stroke; pointer-events: none; }
-    svg .dt { fill: var(--dim); paint-order: stroke; stroke: var(--panel); stroke-linejoin: round; }
+    svg .dt { fill: var(--dim); paint-order: stroke; stroke: var(--panel); stroke-linejoin: round; pointer-events: none; }
     svg .dt.accent { fill: var(--accent); }
-    svg .grip { stroke: var(--accent); stroke-width: 1.2; stroke-dasharray: 6 4; fill: none; }
+    svg .grip { stroke: var(--accent); stroke-width: 1.2; stroke-dasharray: 6 4; fill: none; pointer-events: none; }
     svg .nofill { fill: none; }
     svg .hid.np { pointer-events: none; }
     svg .slotin { fill: #7d8996; }
+    svg .jaw { touch-action: none; }
     svg .jaw-bevel { fill: #8d9eaf; }
     svg .pin { fill: #e4e8ec; }
     svg .body { fill: var(--steel); }
@@ -98,6 +99,7 @@
     .switch[aria-checked="true"] .track::after { transform: translateX(-1rem); }
     .switch b { font-weight: 700; }
 
+    .move-hint { margin-top: .55rem; }
     .step-hint { margin-bottom: .6rem; }
     .steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: .75rem; }
     .step { border: 1px solid var(--line); border-radius: 8px; padding: .7rem .8rem; display: flex; flex-direction: column; gap: .35rem; }
@@ -172,6 +174,7 @@
             <span>جهت فک‌ها: <b id="revState">عادی</b></span>
           </button>
         </div>
+        <p class="body-hint move-hint">برای باز و بسته کردن هم‌زمان، سطح فک را دور از خطوط سفید به سمت بیرون یا مرکز بکشید. در نمای جانبی، روی فک وسط به بالا بکشید تا باز شود و به پایین تا بسته شود.</p>
       </div>
 
       <div>
@@ -192,6 +195,6 @@
       </div>
     </section>
   </main>
-  <script src="./app.js?v=26"></script>
+  <script src="./app.js?v=27"></script>
 </body>
 </html>
