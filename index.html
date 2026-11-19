@@ -66,7 +66,7 @@
     svg .nofill { fill: none; }
     svg .hid.np { pointer-events: none; }
     svg .jaw { touch-action: none; }
-    svg .jaw-bevel { fill: #8d9eaf; }
+    svg .jaw-bevel { fill: var(--jaw-bevel-fill, #8d9eaf); }
     svg .pin { fill: #e4e8ec; }
     svg .body, svg .slotin { fill: var(--steel); }
     #outside .body, #outside .slotin { fill: url(#outsideBodyShade) var(--steel); }
@@ -210,6 +210,6 @@
       </div>
     </section>
   </main>
-  <script src="./app.js?v=39"></script>
+  <script src="./app.js?v=40"></script>
 </body>
 </html>

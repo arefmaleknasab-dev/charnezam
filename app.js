@@ -35,6 +35,8 @@
   const JAW_BADGE_OFFSET = 0.06;
   const JAW_BADGE_RADIUS = 0.036;
   const SIDE_JAW_FILL = 'hsl(210 16% 74%)';
+  const SIDE_BODY_SHADOW = 58;
+  const SIDE_BODY_HIGHLIGHT = 90;
 
   const FA_DIGITS = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
   const fa = (n) => String(n).replace(/\d/g, (c) => FA_DIGITS[+c]);
@@ -143,6 +145,16 @@
     const reach = clamp(radius / maxJawReach(g), 0, 1);
     // Keep the step contrast independent of height; outward motion lightens each face.
     return steelShade(59 + 5 * stepIndex + 24 * reach);
+  }
+
+  function reversedEndOnLightness(radius, g) {
+    const R = g.D / 2;
+    const offset = radius - R;
+    // The face is flush with the brightest part of the cylinder at radius R.
+    // Keep a smaller lightening range below the surface, so it still looks like steel.
+    if (offset <= 0) return SIDE_BODY_HIGHLIGHT + 5 * clamp(-offset / R, 0, 1);
+    const protrusion = clamp(offset / (maxJawReach(g) - R), 0, 1);
+    return SIDE_BODY_HIGHLIGHT - 24 * protrusion;
   }
 
   function badge(x, y, k, g) {
@@ -337,10 +349,12 @@
     ];
     const shape = `d="${roundedPath(P, [1, 2, 3, 4, 7, 8, 9, 10], 0.25 * nd)}"`;
     const c = g.tipChamfer;
+    const outerRadius = j.p + jawLen(j);
     const bevels = j.rev ? [-1, 1].map((sign) => tipChamferBand(xb, j.steps[0].h, sign * (hw - c), sign * hw)).join('') : '';
+    const bevelStyle = j.rev ? ` style="--jaw-bevel-fill:${steelShade(reversedEndOnLightness(outerRadius, g) - 16)}"` : '';
     let lines = `<line class="thin" stroke-opacity=".7" x1="${x0 + 0.17 * sd}" y1="${-hw}" x2="${x0 + 0.17 * sd}" y2="${hw}"/>`;
     let visibleExtent = xb;
-    let faceRadius = j.p + jawLen(j);
+    let faceRadius = outerRadius;
     let stops = '';
     let edits = '';
     const offset = (x) => (x - xb) / (xT - xb);
@@ -351,22 +365,19 @@
       faceRadius -= l; // Hidden steps still contribute to the radial profile.
       if (h <= visibleExtent) continue;
       const index = j.steps.indexOf(step);
-      if (!j.rev) {
-        // Hard stops follow the existing edges.
-        const color = endOnStepShade(index, radius, g);
-        stops += `<stop offset="${offset(visibleExtent)}" stop-color="${color}"/><stop offset="${offset(h)}" stop-color="${color}"/>`;
-      }
+      // Hard stops follow the existing edges in either orientation.
+      const color = j.rev ? steelShade(reversedEndOnLightness(radius, g)) : endOnStepShade(index, radius, g);
+      stops += `<stop offset="${offset(visibleExtent)}" stop-color="${color}"/><stop offset="${offset(h)}" stop-color="${color}"/>`;
       edits += stepEdge('outside-center', index, 'h', 'x', 1, [h, -hw], [h, hw]);
       if (h >= xT) break; // The silhouette already draws this edge.
       visibleExtent = h;
       lines += `<line class="ln" x1="${h}" y1="${-hw}" x2="${h}" y2="${hw}"/>`;
     }
-    const gradient = stops && `<defs><linearGradient id="outsideCenterStepShade" gradientUnits="userSpaceOnUse" x1="${xb}" y1="0" x2="${xT}" y2="0">${stops}</linearGradient></defs>`;
-    const fill = gradient ? 'url(#outsideCenterStepShade)' : undefined;
-    const surface = outsideJawSurface('path', shape, bevels, 'outsideCenterClip', fill);
+    const gradient = `<defs><linearGradient id="outsideCenterStepShade" gradientUnits="userSpaceOnUse" x1="${xb}" y1="0" x2="${xT}" y2="0">${stops}</linearGradient></defs>`;
+    const surface = outsideJawSurface('path', shape, bevels, 'outsideCenterClip', 'url(#outsideCenterStepShade)');
     // The end-on jaw has no visible radial travel here; an upward drag opens it.
     return `<rect class="slotin" x="${xb}" y="${-hw}" width="${-xb}" height="${g.w}"/>${gradient}` +
-      `<g class="jaw" data-axis="y" data-factor="-1" data-end-on>${surface}${lines}</g>${edits}`;
+      `<g class="jaw" data-axis="y" data-factor="-1" data-end-on${bevelStyle}>${surface}${lines}</g>${edits}`;
   }
 
   function outsideBodyGradient(R) {
@@ -376,7 +387,8 @@
       const y = 2 * offset - 1;
       // The projected cylinder is closest at its center and recedes toward both rims.
       const depth = Math.sqrt(1 - y * y);
-      return `<stop offset="${offset}" stop-color="${steelShade(58 + 32 * depth)}"/>`;
+      const lightness = SIDE_BODY_SHADOW + (SIDE_BODY_HIGHLIGHT - SIDE_BODY_SHADOW) * depth;
+      return `<stop offset="${offset}" stop-color="${steelShade(lightness)}"/>`;
     });
     // Share one coordinate system so the body and jaw recesses match at every height.
     return `<linearGradient id="outsideBodyShade" gradientUnits="userSpaceOnUse" x1="0" y1="${-R}" x2="0" y2="${R}">${stops.join('')}</linearGradient>`;
