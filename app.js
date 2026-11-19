@@ -187,12 +187,6 @@
     s += `<circle class="ln body" r="${R}"/><circle class="thin nofill" r="${R - 0.02 * D}"/>`;
     s += `<g clip-path="url(#bodyClip)">` + [0, 90].map((a) =>
       `<rect class="thin slot" x="${-g.w / 2}" y="${-R * 1.05}" width="${g.w}" height="${R * 2.1}" transform="rotate(${a})"/>`).join('') + `</g>`;
-    s += `<circle class="hid nofill" r="${g.D1 / 2}"/><circle class="ctr nofill" r="${g.D2 / 2}"/>`;
-    const mountingHoleAngle = (i) => ((15 + (i * 360) / g.z) * Math.PI) / 180;
-    for (let i = 0; i < g.z; i++) {
-      const a = mountingHoleAngle(i);
-      s += `<circle class="hid nofill" cx="${Math.sin(a) * g.D2 / 2}" cy="${-Math.cos(a) * g.D2 / 2}" r="${g.d / 2}"/>`;
-    }
     s += `<circle class="ln void" r="${g.D3 / 2}"/>`;
     s += frontPinions([-1, 1].map((sg) =>
       `<line class="hid np" x1="${sg * sock}" y1="${-R - prot}" x2="${sg * sock}" y2="${-R + 0.03 * D}"/>`).join(''));
@@ -217,8 +211,8 @@
     }
 
     if (state.dims) {
-      // Point to the lower-left mounting hole to keep both pinions clear.
-      const a = mountingHoleAngle(g.z - 1);
+      // Point to the lower-left mounting-hole position, clear of both pinions.
+      const a = ((15 + ((g.z - 1) * 360) / g.z) * Math.PI) / 180;
       const dx = Math.sin(a);
       const dy = -Math.cos(a);
       const r0 = g.D2 / 2;
