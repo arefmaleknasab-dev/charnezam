@@ -635,7 +635,7 @@
     if (svg.hasPointerCapture(pointerId)) svg.releasePointerCapture(pointerId);
   }
 
-  function bindDiagramEditing(svg, stopAnimation) {
+  function bindDiagramEditing(svg) {
     const coordinate = (event, axis) => {
       const p = diagramPoint(svg, event);
       if (!p) return NaN;
@@ -681,7 +681,6 @@
       const settings = dragSettings(target, event);
       const start = coordinate(event, settings.axis);
       if (!Number.isFinite(start)) return;
-      stopAnimation();
       setHover(null);
       // Capture on the mounted SVG, not on the face or edge replaced by rendering.
       svg.setPointerCapture(event.pointerId);
@@ -730,14 +729,8 @@
         </div>
       </div>`).join('');
 
-    let anim = 0;
-    const stopAnimation = () => cancelAnimationFrame(anim);
-    const interruptMotion = () => {
-      stopAnimation();
-      endDiagramDrag();
-    };
-    bindDiagramEditing($('#front'), stopAnimation);
-    bindDiagramEditing($('#outside'), stopAnimation);
+    bindDiagramEditing($('#front'));
+    bindDiagramEditing($('#outside'));
 
     for (const [key, { min, max }] of Object.entries(BODY_LIMITS)) {
       const input = $(`#body${key}`);
@@ -745,39 +738,20 @@
       input.max = String(max);
       input.step = String(BODY_INCREMENT);
       input.addEventListener('input', () => {
-        interruptMotion();
+        endDiagramDrag();
         setBodyDimension(key, input.valueAsNumber);
       });
     }
     $('#resetBody').addEventListener('click', () => {
-      interruptMotion();
+      endDiagramDrag();
       state.body = defaultBody();
       renderBody();
     });
 
-    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
-    const animateMove = (direction) => {
-      interruptMotion();
-      const g = geometry(state.body);
-      const j = scaleJaw(state.jawAtRef, g.jawScale);
-      const from = j.p;
-      const to = clamp(from + direction * 0.02 * g.D, pMin(j, g), pMax(j, g));
-      if (reduceMotion.matches) { setPos(to, g); return; }
-      const t0 = performance.now();
-      const tick = (now) => {
-        const t = Math.min(1, (now - t0) / 450);
-        const e = 1 - (1 - t) ** 3;
-        setPos(from + (to - from) * e, g);
-        if (t < 1) anim = requestAnimationFrame(tick);
-      };
-      anim = requestAnimationFrame(tick);
-    };
-    $('#pos').addEventListener('input', (ev) => { interruptMotion(); setPos(+ev.target.value); });
-    $('#btnClose').addEventListener('click', () => animateMove(-1));
-    $('#btnOpen').addEventListener('click', () => animateMove(1));
+    $('#pos').addEventListener('input', (ev) => { endDiagramDrag(); setPos(+ev.target.value); });
 
     $('#rev').addEventListener('click', () => {
-      interruptMotion();
+      endDiagramDrag();
       state.jawAtRef.rev = !state.jawAtRef.rev;
       if (state.gripStep !== null) {
         // The other step now faces inward at the same joint after reversal.
@@ -791,13 +765,13 @@
       const el = ev.target;
       const { k, i } = el.dataset;
       if (!Number.isFinite(el.valueAsNumber)) return;
-      interruptMotion();
+      endDiagramDrag();
       const g = geometry(state.body);
       setJawStep(+i, k, el.valueAsNumber / g.jawScale, g);
     });
 
     $('#gripStep').addEventListener('change', (ev) => {
-      interruptMotion();
+      endDiagramDrag();
       setGripStep(ev.target.value === '' ? null : Number(ev.target.value));
     });
 
@@ -807,7 +781,7 @@
     });
 
     $('#reset').addEventListener('click', () => {
-      interruptMotion();
+      endDiagramDrag();
       state.jawAtRef = defaultReferenceJaw();
       state.gripStep = null;
       render();

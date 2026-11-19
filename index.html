@@ -91,8 +91,7 @@
     .row label { font-size: .9rem; }
     .row output { font-family: "Geist Mono", ui-monospace, monospace; font-size: .85rem; text-align: right; }
     input[type="range"] { width: 100%; accent-color: var(--accent); direction: ltr; }
-    .actions { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .6rem; align-items: center; }
-    .switch { display: inline-flex; align-items: center; gap: .5rem; }
+    .switch { display: inline-flex; align-items: center; gap: .5rem; margin-top: .6rem; }
     .switch .track { width: 2.2rem; height: 1.2rem; border-radius: 999px; background: var(--line); position: relative; flex: none; }
     .switch .track::after { content: ""; position: absolute; top: 2px; right: 2px; width: calc(1.2rem - 4px); height: calc(1.2rem - 4px); border-radius: 50%; background: var(--panel); border: 1px solid var(--ink); transition: transform .15s; }
     .switch[aria-checked="true"] .track { background: var(--accent); }
@@ -168,15 +167,11 @@
           <input type="range" id="pos" step="0.1">
           <output id="posOut" for="pos" dir="ltr"></output>
         </div>
-        <div class="actions">
-          <button type="button" id="btnClose">بستن فک‌ها</button>
-          <button type="button" id="btnOpen">باز کردن فک‌ها</button>
-          <button type="button" id="rev" class="switch" role="switch" aria-checked="false">
-            <span class="track" aria-hidden="true"></span>
-            <span>جهت فک‌ها: <b id="revState">عادی</b></span>
-          </button>
-        </div>
-        <p class="body-hint move-hint">برای باز و بسته کردن هم‌زمان، سطح فک را دور از خطوط سفید به سمت بیرون یا مرکز بکشید. در نمای جانبی، روی فک وسط به بالا بکشید تا باز شود و به پایین تا بسته شود.</p>
+        <button type="button" id="rev" class="switch" role="switch" aria-checked="false">
+          <span class="track" aria-hidden="true"></span>
+          <span>جهت فک‌ها: <b id="revState">عادی</b></span>
+        </button>
+        <p class="body-hint move-hint">برای باز و بسته کردن هم‌زمان، از نوار «فاصلهٔ فک‌ها تا مرکز» استفاده کنید یا سطح فک را دور از خطوط سفید به سمت بیرون یا مرکز بکشید. در نمای جانبی، روی فک وسط به بالا بکشید تا باز شود و به پایین تا بسته شود.</p>
       </div>
 
       <div>
@@ -210,6 +205,6 @@
       </div>
     </section>
   </main>
-  <script src="./app.js?v=41"></script>
+  <script src="./app.js?v=42"></script>
 </body>
 </html>
