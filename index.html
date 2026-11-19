@@ -73,10 +73,10 @@
     svg .slot { fill: #b4bec8; }
     svg .badge circle { fill: var(--panel); }
     svg .badge text { fill: var(--ink); font-weight: 600; }
-    svg .step-hit, svg .step-highlight { vector-effect: non-scaling-stroke; }
-    svg .step-hit { stroke: transparent; stroke-width: 12; pointer-events: stroke; touch-action: none; }
-    svg .step-highlight { stroke: #fff; stroke-width: 2.8; stroke-linecap: round; opacity: 0; pointer-events: none; }
-    svg .step-edge:is(.is-hovered, .is-active) .step-highlight { opacity: 1; }
+    svg .dimension-hit, svg .dimension-highlight { fill: none; vector-effect: non-scaling-stroke; }
+    svg .dimension-hit { stroke: transparent; stroke-width: 12; pointer-events: stroke; touch-action: none; }
+    svg .dimension-highlight { stroke: #fff; stroke-width: 2.8; stroke-linecap: round; opacity: 0; pointer-events: none; }
+    svg .dimension-edge:is(.is-hovered, .is-active) .dimension-highlight { opacity: 1; }
 
     .controls { display: flex; flex-direction: column; gap: 1.1rem; }
     button {
@@ -140,8 +140,8 @@
             <output id="bodyH1Out" for="bodyH1" dir="ltr"></output>
           </div>
         </div>
-        <p class="body-hint" id="bodyDHint">اندازهٔ فک‌ها متناسب با قطر بدنه تغییر می‌کند؛ مبنا قطر ۱۶۰ میلی‌متر است.</p>
-        <p class="body-hint" id="bodyH1Hint">ارتفاع بدنه از سمت پشت تغییر می‌کند؛ سطح جلو و فک‌ها ثابت می‌مانند.</p>
+        <p class="body-hint" id="bodyDHint">برای تغییر قطر، محیط بدنه در نمای روبه‌رو یا لبهٔ بالا یا پایین آن در نمای جانبی را بکشید. اندازهٔ فک‌ها متناسب با قطر تغییر می‌کند؛ مبنا قطر ۱۶۰ میلی‌متر است.</p>
+        <p class="body-hint" id="bodyH1Hint">برای تغییر ارتفاع، لبهٔ پشت بدنه را در نمای جانبی بکشید؛ سطح جلو و فک‌ها ثابت می‌مانند.</p>
       </section>
     </section>
 
@@ -192,6 +192,6 @@
       </div>
     </section>
   </main>
-  <script src="./app.js?v=25"></script>
+  <script src="./app.js?v=26"></script>
 </body>
 </html>
